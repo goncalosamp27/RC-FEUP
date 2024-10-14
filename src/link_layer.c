@@ -14,15 +14,14 @@ volatile int STOP = FALSE;
 
 int alarmEnabled = FALSE;
 int counter = 0;
-int nAttempts;
-int nTimeout;
+int nAttempts; // should be final, not changed
+int nTimeout; // should be final, not changed
 
 // Alarm function handler
 void alarmHandler(int signal) {
     alarmEnabled = FALSE;
     counter++;
 }
-
 void enableAlarm(int time) {
     alarm(time);
     alarmEnabled = TRUE;
@@ -178,7 +177,40 @@ int llopen(LinkLayer connectionParameters) {
 // LLWRITE
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize){
-    // TODO
+    int frame_size = 6 + bufSize; // 6 bytes inciais + o buf_size
+    unsigned char *frame = (unsigned char *) malloc(frame_size);
+
+    frame[0] = FRAME;
+    frame[1] = TRANSMITER_ADDRESS;
+    frame[2] = (0 << 6);
+    frame[3] = (frame[1] ^ frame[2]);
+    memcpy(frame+4, buf, bufSize); 
+    // copiar o que temos no buffer para a frame apartir da sua 4 posição
+    unsigned char BCC2;
+
+    for(int i = 0; i < bufSize; i ++){
+        if (i == 0) BCC2 = buf[0];
+        else BCC2 = BCC2 ^ buf[i];
+    }
+
+    /*  
+        If the octet 01111110 (0x7e) occurs inside the frame, i.e., the pattern that corresponds to a flag (or escape octet), the octet is 
+        replaced by the sequence 0x7d 0x5e (escape octet followed by the result of the exclusive or of the octet replaced with the octet 0x20) 
+    */
+    int final_pos;
+    for (int i = 0 ; i < bufSize ; i++) {
+        if(buf[i] == FRAME || buf[i] == ESCAPE) {
+            frame_size++;
+            frame = realloc(frame, frameSize);
+
+            frame[i + 4] = ESCAPE; 
+            frame[i + 5] = (buf[i] ^ 0x20);
+        }
+        frame[i + 6] = buf[i];
+        final_pos = i + 7;
+    }
+    frame[final_pos] = BCC2;
+    frame[final_pos + 1] = FLAG;
     return 0;
 }
 

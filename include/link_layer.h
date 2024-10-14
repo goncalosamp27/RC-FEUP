@@ -10,6 +10,7 @@
 #define SET                0x03
 #define UA                 0x07
 #define DISCONNECT         0x0B
+#define ESCAPE             0x7D
 
 #define SIGALRM 14
 
