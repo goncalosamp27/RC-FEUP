@@ -15,10 +15,10 @@ volatile int STOP = FALSE;
 int alarmEnabled = FALSE;
 int counter = 0;
 int nAttempts;
+int nTimeout;
 
 // Alarm function handler
-void alarmHandler(int signal)
-{
+void alarmHandler(int signal) {
     alarmEnabled = FALSE;
     counter++;
 }
@@ -31,20 +31,21 @@ void enableAlarm(int time) {
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
-int llopen(LinkLayer connectionParameters)
-{
+int llopen(LinkLayer connectionParameters) {
     int fd = openSerialPort(connectionParameters.serialPort, connectionParameters.baudRate);
 
-    if (fd < 0){
+    if (fd < 0) {
         return -1;
     }
 
-    if(connectionParameters.role == LlRx){
+    nAttempts = connectionParameters.nRetransmissions;
+    nTimeout = connectionParameters.timeout;
+
+    if(connectionParameters.role == LlRx) {
         unsigned char buf[BUF_SIZE + 1] = {0};
 
         state_t state = START_SM;
         unsigned char rcv;
-        nAttempts = connectionParameters.nRetransmissions;
         
         while (state != STOP_SM) {
             int bytes = readByteSerialPort(&rcv);
@@ -55,24 +56,29 @@ int llopen(LinkLayer connectionParameters)
                 case START_SM:
                     if (rcv == FRAME) state = FLAG_OK;
                     break;
+
                 case FLAG_OK:
                     if (rcv == RECIEVER_ADDRESS) state = A_OK;
                     else if (rcv != FRAME) state = START_SM;
                     break;
+
                 case A_OK:
                     if (rcv == SET) state = C_OK;
                     else if (rcv == FRAME) state = FLAG_OK;
                     else state = START_SM;
                     break;
+
                 case C_OK:
                     if (rcv == (RECIEVER_ADDRESS ^ SET)) state = BCC_OK;
                     else if (rcv == FRAME) state = FLAG_OK;
                     else state = START_SM;
                     break;
+
                 case BCC_OK:
                     if (rcv == FRAME) state = STOP_SM;
                     else state = START_SM;
                     break;
+
                 default:
                     return -1;
             }
@@ -91,6 +97,7 @@ int llopen(LinkLayer connectionParameters)
 
         return fd;
     }
+
     else if(connectionParameters.role == LlTx) {
         unsigned char buf[BUF_SIZE + 1] = {0};
 
@@ -116,8 +123,9 @@ int llopen(LinkLayer connectionParameters)
 
             state_t state = START_SM;
             unsigned char rcv;
+
             while (state != STOP_SM && alarmEnabled) {
-                int bytes = readByteSerialPort( &rcv);
+                int bytes = readByteSerialPort(&rcv);
                 if (bytes <= 0) {
                     return -1;  // Error reading from serial port
                 }
@@ -126,24 +134,29 @@ int llopen(LinkLayer connectionParameters)
                     case START_SM:
                         if (rcv == FRAME) state = FLAG_OK;
                         break;
+
                     case FLAG_OK:
                         if (rcv == TRANSMITER_ADDRESS) state = A_OK;
                         else if (rcv != FRAME) state = START_SM;
                         break;
+
                     case A_OK:
                         if (rcv == UA) state = C_OK;
                         else if (rcv == FRAME) state = FLAG_OK;
                         else state = START_SM;
                         break;
+
                     case C_OK:
                         if (rcv == (TRANSMITER_ADDRESS ^ SET)) state = BCC_OK;
                         else if (rcv == FRAME) state = FLAG_OK;
                         else state = START_SM;
                         break;
+
                     case BCC_OK:
                         if (rcv == FRAME) state = STOP_SM;
                         else state = START_SM;
                         break;
+
                     default:
                         return -1;
                 }
@@ -158,26 +171,22 @@ int llopen(LinkLayer connectionParameters)
         }
         return -1;
     }
-    return -1;
+    else return -1;
 }
 
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(const unsigned char *buf, int bufSize)
-{
+int llwrite(const unsigned char *buf, int bufSize){
     // TODO
-
     return 0;
 }
 
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(unsigned char *packet)
-{
+int llread(unsigned char *packet){
     // TODO
-
     return 0;
 }
 
@@ -194,9 +203,7 @@ int llclose(int showStatistics) {
     while (nAttempts != 0 && state != STOP_SM){
         
         unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, DISCONNECT, (TRANSMITER_ADDRESS ^ DISCONNECT) ,FRAME};
-        if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
-            return -1;
-        }
+        if(writeBytesSerialPort(CLOSE_WORD,5) < 0) return -1;
 
         while (alarmEnabled) {
             if (readByteSerialPort(&rcv) > 0) {
