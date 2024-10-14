@@ -4,6 +4,25 @@
 #ifndef _LINK_LAYER_H_
 #define _LINK_LAYER_H_
 
+#define FRAME              0x7E
+#define TRANSMITER_ADDRESS 0x03
+#define RECIEVER_ADDRESS   0x01
+#define SET                0x03
+#define UA                 0x07
+#define DISCONNECT         0x0B
+
+#define SIGALRM 14
+
+
+typedef enum {
+	START_SM,
+	FLAG_OK,
+	A_OK,
+	C_OK,
+	BCC_OK,
+	STOP_SM
+} state_t;
+
 typedef enum
 {
     LlTx,
