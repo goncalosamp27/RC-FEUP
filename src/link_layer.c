@@ -24,14 +24,10 @@ void alarmHandler(int signal) {
     counter++;
 }
 
-
-
-
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters) {
-    
 
     int fd = openSerialPort(connectionParameters.serialPort, connectionParameters.baudRate);
 
@@ -108,7 +104,8 @@ int llopen(LinkLayer connectionParameters) {
             printf("foi aqui 3\n");
             return -1;
         }
-    } else if(connectionParameters.role == LlRx){
+    } 
+    else if(connectionParameters.role == LlRx){
         while(state != STOP_SM){
             if(readByteSerialPort(&rcv) == -1){
                     printf("foi aqui deu\n");
@@ -169,42 +166,62 @@ int llopen(LinkLayer connectionParameters) {
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(const unsigned char *buf, int bufSize){
-    // int frame_size = 6 + bufSize; // 6 bytes inciais + o buf_size
-    // unsigned char *frame = (unsigned char *) malloc(frame_size);
+int llwrite(const unsigned char *buf, int bufSize) {
+    int frame_size = 6 + bufSize;
+    unsigned char *frame = (unsigned char *) malloc(frame_size); // alocar espaço na frame
 
-    // frame[0] = FRAME;
-    // frame[1] = TRANSMITER_ADDRESS;
-    // frame[2] = (0 << 6);
-    // frame[3] = (frame[1] ^ frame[2]);
-    // memcpy(frame+4, buf, bufSize); 
-    // // copiar o que temos no buffer para a frame apartir da sua 4 posição
-    // unsigned char BCC2;
+    frame[0] = FRAME; // FLAG
+    frame[1] = TRANSMITER_ADDRESS; // A
+    frame[2] = (0 << 6); // C
+    frame[3] = (frame[1] ^ frame[2]); // BCC1
 
-    // for(int i = 0; i < bufSize; i ++){
-    //     if (i == 0) BCC2 = buf[0];
-    //     else BCC2 = BCC2 ^ buf[i];
-    // }
+    // STUFFING //
+    current_byte = 4; // nao podemos escrever nos bytes ja ocupados frame[0,1,2,3]
+    for (int i = 0 ; i < bufSize ; i++) 
+    {
+        if (buf[i] == FRAME || buf[i] == ESCAPE) {
+            frame_size += 1; 
+            frame = realloc(frame, frame_size); // aumenta a size da frame em 1 para os escape macros
+            
+            frame[current_byte] = ESCAPE; 
+            current_byte++;
+            
+            frame[current_byte] = (buf[i] == FRAME) ? ESCAPE2 : ESCAPE3;
+            current_byte++;
+        }
+        else {
+            frame[current_byte] = buf[i];
+            current_byte++;
+        }
+    }
 
-    // /*  
-    //     If the octet 01111110 (0x7e) occurs inside the frame, i.e., the pattern that corresponds to a flag (or escape octet), the octet is 
-    //     replaced by the sequence 0x7d 0x5e (escape octet followed by the result of the exclusive or of the octet replaced with the octet 0x20) 
-    // */
-    // int final_pos;
-    // for (int i = 0 ; i < bufSize ; i++) {
-    //     if(buf[i] == FRAME || buf[i] == ESCAPE) {
-    //         frame_size++;
-    //         frame = realloc(frame, frameSize);
+    unsigned char BCC2;
 
-    //         frame[i + 4] = ESCAPE; 
-    //         frame[i + 5] = (buf[i] ^ 0x20);
-    //     }
-    //     frame[i + 6] = buf[i];
-    //     final_pos = i + 7;
-    // }
-    // frame[final_pos] = BCC2;
-    // frame[final_pos + 1] = FLAG;
-    return 0;
+    for(int i = 0; i < bufSize; i++) 
+    {
+        if (i == 0) BCC2 = buf[0];
+        else BCC2 = BCC2 ^ buf[i];
+    }
+
+    frame[current_byte] = BCC2; 
+    current_byte++;
+    frame[current_byte] = FLAG;
+
+    int nTransmition = 0;
+    bool rejected = false; 
+    bool accepted = false;
+
+    while(nTransmition < nAttempts) {
+
+        alarmTrigger = FALSE;
+        alarm(nTimeout);
+
+        while(alarmTrigger == FALSE && !rejected && !accepted) {
+            if(writeBytesSerialPort(frame, frame_size) == -1) return -1;
+        }
+    }
+
+    return frame_size;
 }
 
 ////////////////////////////////////////////////
@@ -220,61 +237,61 @@ int llread(unsigned char *packet){
 ////////////////////////////////////////////////
 int llclose(int showStatistics) {
 
-    // state_t state = START_SM;
-    // (void)signal(SIGALRM, alarmHandler);
+    state_t state = START_SM;
+    (void)signal(SIGALRM, alarmHandler);
 
-    // unsigned char rcv;
+    unsigned char rcv;
     
-    // while (nAttempts != 0 && state != STOP_SM){
+    while (nAttempts != 0 && state != STOP_SM){
         
-    //     unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, DISCONNECT, (TRANSMITER_ADDRESS ^ DISCONNECT) ,FRAME};
-    //     if(writeBytesSerialPort(CLOSE_WORD,5) < 0) return -1;
+        unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, DISCONNECT, (TRANSMITER_ADDRESS ^ DISCONNECT) ,FRAME};
+        if(writeBytesSerialPort(CLOSE_WORD,5) < 0) return -1;
 
-    //     while (alarmEnabled) {
-    //         if (readByteSerialPort(&rcv) > 0) {
-    //             switch (state) {
-    //                 case START_SM:
-    //                     if (rcv == FRAME) state = FLAG_OK;
-    //                     break;
+        while (alarmEnabled) {
+            if (readByteSerialPort(&rcv) > 0) {
+                switch (state) {
+                    case START_SM:
+                        if (rcv == FRAME) state = FLAG_OK;
+                            break;
 
-    //                 case FLAG_OK:
-    //                     if (rcv == RECIEVER_ADDRESS) state = A_OK;
-    //                     else if (rcv != FRAME) state = START_SM;
-    //                     break;
+                    case FLAG_OK:
+                        if (rcv == RECIEVER_ADDRESS) state = A_OK;
+                        else if (rcv != FRAME) state = START_SM;
+                        break;
 
-    //                 case A_OK:
-    //                     if (rcv == DISCONNECT) state = C_OK;
-    //                     else if (rcv == FRAME) state = FLAG_OK;
-    //                     else state = START_SM;
-    //                     break; 
+                    case A_OK:
+                        if (rcv == DISCONNECT) state = C_OK;
+                        else if (rcv == FRAME) state = FLAG_OK;
+                        else state = START_SM;
+                        break; 
 
-    //                 case C_OK:
-    //                     if (rcv == (RECIEVER_ADDRESS ^ DISCONNECT)) state = BCC_OK;
-    //                     else if (rcv == FRAME) state = FLAG_OK;
-    //                     else state = START_SM;
-    //                     break;
+                   case C_OK:
+                        if (rcv == (RECIEVER_ADDRESS ^ DISCONNECT)) state = BCC_OK;
+                        else if (rcv == FRAME) state = FLAG_OK;
+                        else state = START_SM;
+                        break;
 
-    //                 case BCC_OK:
-    //                     if (rcv == FRAME) state = STOP_SM;
-    //                     else state = START_SM;
-    //                     break;
+                    case BCC_OK:
+                        if (rcv == FRAME) state = STOP_SM;
+                        else state = START_SM;
+                        break;
 
-    //                 default:
-    //                     return -1;
-    //             }
-    //         }
-    //     }
-    //     nAttempts--;
-    // }
+                    default:
+                        return -1;
+                }
+            }
+        }
+         nAttempts--;
+    }
 
-    // if(state != STOP_SM) return -1;
+    if(state != STOP_SM) return -1;
 
-    // unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, UA, TRANSMITER_ADDRESS ^ UA,FRAME};
-    // if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
-    //     return -1;
-    // }
+    unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, UA, TRANSMITER_ADDRESS ^ UA,FRAME};
 
-    // int clstat = closeSerialPort();
-    // return clstat;
-    return 0;
+    if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
+         return -1;
+    }
+
+    int clstat = closeSerialPort();
+    return clstat;
 }
