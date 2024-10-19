@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
+#include <stdbool.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -23,6 +24,8 @@ void alarmHandler(int signal) {
     alarmTrigger = TRUE;
     counter++;
 }
+
+int fd = 0;
 
 ////////////////////////////////////////////////
 // LLOPEN
@@ -166,63 +169,6 @@ int llopen(LinkLayer connectionParameters) {
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(const unsigned char *buf, int bufSize) {
-    // int frame_size = 6 + bufSize;
-    // unsigned char *frame = (unsigned char *) malloc(frame_size); // alocar espaço na frame
-
-    // frame[0] = FRAME; // FLAG
-    // frame[1] = TRANSMITER_ADDRESS; // A
-    // frame[2] = (0 << 6); // C
-    // frame[3] = (frame[1] ^ frame[2]); // BCC1
-
-    // // STUFFING //
-    // current_byte = 4; // nao podemos escrever nos bytes ja ocupados frame[0,1,2,3]
-    // for (int i = 0 ; i < bufSize ; i++) 
-    // {
-    //     if (buf[i] == FRAME || buf[i] == ESCAPE) {
-    //         frame_size += 1; 
-    //         frame = realloc(frame, frame_size); // aumenta a size da frame em 1 para os escape macros
-            
-    //         frame[current_byte] = ESCAPE; 
-    //         current_byte++;
-            
-    //         frame[current_byte] = (buf[i] == FRAME) ? ESCAPE2 : ESCAPE3;
-    //         current_byte++;
-    //     }
-    //     else {
-    //         frame[current_byte] = buf[i];
-    //         current_byte++;
-    //     }
-    // }
-
-    // unsigned char BCC2;
-
-    // for(int i = 0; i < bufSize; i++) 
-    // {
-    //     if (i == 0) BCC2 = buf[0];
-    //     else BCC2 = BCC2 ^ buf[i];
-    // }
-
-    // frame[current_byte] = BCC2; 
-    // current_byte++;
-    // frame[current_byte] = FLAG;
-
-    // int nTransmition = 0;
-    // bool rejected = FALSE; 
-    // bool accepted = FALSE;
-
-    // while(nTransmition < nAttempts) {
-
-    //     alarmTrigger = FALSE;
-    //     alarm(nTimeout);
-
-    //     while(alarmTrigger == FALSE && !rejected && !accepted) {
-    //         if(writeBytesSerialPort(frame, frame_size) == -1) return -1;
-    //     }
-    // }
-
-    return 0;
-}
 
 unsigned char calculateBCC2(unsigned char *data, int length) {
     unsigned char bcc2 = 0x00;
@@ -232,20 +178,121 @@ unsigned char calculateBCC2(unsigned char *data, int length) {
     return bcc2;
 }
 
-int byteStuffing(unsigned char *frame, int length) {
-    int newLength = 0;
-    unsigned char stuffedFrame[2 * length];  // Allocate enough space for worst case
+unsigned char readControlWord(int fd){
+    unsigned char current_byte = 0x00; 
+    unsigned char cField = 0x00;
 
-    for (int i = 0; i < length; i++) {
-        if (frame[i] == FRAME || frame[i] == 0x7d) {
-            stuffedFrame[newLength++] = 0x7d;
-            stuffedFrame[newLength++] = frame[i] ^ 0x20;
-        } else {
-            stuffedFrame[newLength++] = frame[i];
+    state_t state = START_SM;
+
+    while(state != STOP_SM && alarmTrigger == FALSE) {
+
+    }
+}
+
+int llwrite(const unsigned char *buf, int bufSize) {
+    int frame_size = 6 + bufSize; // 6 = 4 posições iniciais + 2 finais, somamos o size do buffer
+    unsigned char *frame = (unsigned char *) malloc(frame_size); // alocar espaço na frame
+
+    frame[0] = FRAME;                 // FLAG
+    frame[1] = TRANSMITER_ADDRESS;    // A
+    frame[2] = (0 << 6);              // C
+    frame[3] = (frame[1] ^ frame[2]); // BCC1
+    
+    // STUFFING //
+    int current_byte = 4; // nao podemos escrever nos bytes ja ocupados frame[0,1,2,3]
+    for (int i = 0 ; i < bufSize ; i++) 
+    {
+        if (buf[i] == FRAME || buf[i] == ESCAPE) {
+            frame_size += 1; 
+            frame = realloc(frame, frame_size); // aumenta a size da frame em 1 para os escape macros
+            
+            frame[current_byte++] = ESCAPE; 
+            
+            frame[current_byte++] = (buf[i] == FRAME) ? ESCAPE2 : ESCAPE3;
+        }
+        else {
+            frame[current_byte++] = buf[i];
         }
     }
-    memcpy(frame, stuffedFrame, newLength);  // Copy back to original frame
-    return newLength;
+
+    // BCC CREATION //
+    unsigned char BCC2 = calculateBCC2(buf, bufSize);
+
+    frame[current_byte++] = BCC2; 
+    frame[current_byte] = FRAME;
+
+    int nTransmition = 0;
+
+    bool rejected = false; 
+    bool accepted = false;
+
+    while(nTransmition < nAttempts) {
+         alarmTrigger = FALSE;
+         alarm(nTimeout);
+
+        while(alarmTrigger == FALSE && !rejected && !accepted) {
+            if(writeBytesSerialPort(frame, frame_size) == -1) return -1;
+            
+            unsigned char current_byte = 0x00; 
+            unsigned char byte_in_c = 0x00;
+
+            state_t state = START_SM;
+
+            while(state != STOP_SM && alarmTrigger == FALSE) {
+                if(readByteSerialPort(&current_byte) != -1) {
+                    switch (state)
+                    {
+                    case START_SM:
+                        if(current_byte == FRAME) state = FLAG_OK;
+                        break;
+
+                    case FLAG_OK:
+                        if(current_byte == RECIEVER_ADDRESS) state = A_OK;
+                        else if (current_byte != FRAME) state = START_SM;
+                    
+                    case A_OK:
+                        if(current_byte == C_RR0 || current_byte == C_RR1 || current_byte == C_REJ0 || current_byte == C_REJ1 || current_byte == DISCONNECT) {
+                            state = C_OK;
+                            byte_in_c = current_byte;
+                        }
+
+                        else if (current_byte == FRAME) state = FLAG_OK;
+                        else state = START_SM;
+
+                    case C_OK:
+                        if(current_byte == (RECIEVER_ADDRESS ^  byte_in_c)) {
+                            state = BCC_OK;
+                        }
+                        else if(current_byte == FRAME) state = FLAG_OK;
+                        else state = START_SM;
+                        break;
+
+                    case BCC_OK:
+                        if (current_byte == FRAME) state = STOP_SM;
+                        else state = START_SM; 
+                        break;
+
+                    default:
+                        break;
+                    }
+                }
+            }   // finished checking state machine, already have c value in "byte_in_c"
+
+            if (current_byte == 0) continue;
+            else if (current_byte == C_REJ0 || current_byte == C_REJ1) rejected = true;
+            else if (current_byte == C_RR0 || current_byte == C_RR1) accepted = true;
+            else continue;
+        } 
+
+        if(accepted) break;
+        nTransmition++;
+    }
+
+    free(frame);
+    if(accepted) return frame_size;
+    
+    llclose(fd);
+    return -1;
 }
 
 ////////////////////////////////////////////////
@@ -334,3 +381,22 @@ int llclose(int showStatistics) {
     int clstat = closeSerialPort();
     return clstat;
 }
+
+/*
+int byteStuffing(unsigned char *frame, int length) {
+    int newLength = 0;
+    unsigned char stuffedFrame[2 * length];  // Allocate enough space for worst case
+
+    for (int i = 0; i < length; i++) {
+        if (frame[i] == FRAME || frame[i] == ESCAPE) {
+            stuffedFrame[newLength++] = ESCAPE;
+            stuffedFrame[newLength++] = frame[i] ^ 0x20;
+        } 
+        else {
+            stuffedFrame[newLength++] = frame[i];
+        }
+    }
+    memcpy(frame, stuffedFrame, newLength);  // Copy back to original frame
+    return newLength;
+}
+*/
