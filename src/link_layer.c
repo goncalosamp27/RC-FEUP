@@ -167,61 +167,85 @@ int llopen(LinkLayer connectionParameters) {
 // LLWRITE
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize) {
-    int frame_size = 6 + bufSize;
-    unsigned char *frame = (unsigned char *) malloc(frame_size); // alocar espaço na frame
+    // int frame_size = 6 + bufSize;
+    // unsigned char *frame = (unsigned char *) malloc(frame_size); // alocar espaço na frame
 
-    frame[0] = FRAME; // FLAG
-    frame[1] = TRANSMITER_ADDRESS; // A
-    frame[2] = (0 << 6); // C
-    frame[3] = (frame[1] ^ frame[2]); // BCC1
+    // frame[0] = FRAME; // FLAG
+    // frame[1] = TRANSMITER_ADDRESS; // A
+    // frame[2] = (0 << 6); // C
+    // frame[3] = (frame[1] ^ frame[2]); // BCC1
 
-    // STUFFING //
-    current_byte = 4; // nao podemos escrever nos bytes ja ocupados frame[0,1,2,3]
-    for (int i = 0 ; i < bufSize ; i++) 
-    {
-        if (buf[i] == FRAME || buf[i] == ESCAPE) {
-            frame_size += 1; 
-            frame = realloc(frame, frame_size); // aumenta a size da frame em 1 para os escape macros
+    // // STUFFING //
+    // current_byte = 4; // nao podemos escrever nos bytes ja ocupados frame[0,1,2,3]
+    // for (int i = 0 ; i < bufSize ; i++) 
+    // {
+    //     if (buf[i] == FRAME || buf[i] == ESCAPE) {
+    //         frame_size += 1; 
+    //         frame = realloc(frame, frame_size); // aumenta a size da frame em 1 para os escape macros
             
-            frame[current_byte] = ESCAPE; 
-            current_byte++;
+    //         frame[current_byte] = ESCAPE; 
+    //         current_byte++;
             
-            frame[current_byte] = (buf[i] == FRAME) ? ESCAPE2 : ESCAPE3;
-            current_byte++;
-        }
-        else {
-            frame[current_byte] = buf[i];
-            current_byte++;
+    //         frame[current_byte] = (buf[i] == FRAME) ? ESCAPE2 : ESCAPE3;
+    //         current_byte++;
+    //     }
+    //     else {
+    //         frame[current_byte] = buf[i];
+    //         current_byte++;
+    //     }
+    // }
+
+    // unsigned char BCC2;
+
+    // for(int i = 0; i < bufSize; i++) 
+    // {
+    //     if (i == 0) BCC2 = buf[0];
+    //     else BCC2 = BCC2 ^ buf[i];
+    // }
+
+    // frame[current_byte] = BCC2; 
+    // current_byte++;
+    // frame[current_byte] = FLAG;
+
+    // int nTransmition = 0;
+    // bool rejected = FALSE; 
+    // bool accepted = FALSE;
+
+    // while(nTransmition < nAttempts) {
+
+    //     alarmTrigger = FALSE;
+    //     alarm(nTimeout);
+
+    //     while(alarmTrigger == FALSE && !rejected && !accepted) {
+    //         if(writeBytesSerialPort(frame, frame_size) == -1) return -1;
+    //     }
+    // }
+
+    return 0;
+}
+
+unsigned char calculateBCC2(unsigned char *data, int length) {
+    unsigned char bcc2 = 0x00;
+    for (int i = 0; i < length; i++) {
+        bcc2 ^= data[i];  // XOR para cada byte
+    }
+    return bcc2;
+}
+
+int byteStuffing(unsigned char *frame, int length) {
+    int newLength = 0;
+    unsigned char stuffedFrame[2 * length];  // Allocate enough space for worst case
+
+    for (int i = 0; i < length; i++) {
+        if (frame[i] == FRAME || frame[i] == 0x7d) {
+            stuffedFrame[newLength++] = 0x7d;
+            stuffedFrame[newLength++] = frame[i] ^ 0x20;
+        } else {
+            stuffedFrame[newLength++] = frame[i];
         }
     }
-
-    unsigned char BCC2;
-
-    for(int i = 0; i < bufSize; i++) 
-    {
-        if (i == 0) BCC2 = buf[0];
-        else BCC2 = BCC2 ^ buf[i];
-    }
-
-    frame[current_byte] = BCC2; 
-    current_byte++;
-    frame[current_byte] = FLAG;
-
-    int nTransmition = 0;
-    bool rejected = false; 
-    bool accepted = false;
-
-    while(nTransmition < nAttempts) {
-
-        alarmTrigger = FALSE;
-        alarm(nTimeout);
-
-        while(alarmTrigger == FALSE && !rejected && !accepted) {
-            if(writeBytesSerialPort(frame, frame_size) == -1) return -1;
-        }
-    }
-
-    return frame_size;
+    memcpy(frame, stuffedFrame, newLength);  // Copy back to original frame
+    return newLength;
 }
 
 ////////////////////////////////////////////////
@@ -230,6 +254,21 @@ int llwrite(const unsigned char *buf, int bufSize) {
 int llread(unsigned char *packet){
     // TODO
     return 0;
+}
+
+int byteDestuffing(unsigned char *frame, int length) {
+    int newLength = 0;
+    unsigned char destuffedFrame[length];
+
+    for (int i = 0; i < length; i++) {
+        if (frame[i] == ESCAPE) {
+            destuffedFrame[newLength++] = frame[++i] ^ 0x20;
+        } else {
+            destuffedFrame[newLength++] = frame[i];
+        }
+    }
+    memcpy(frame, destuffedFrame, newLength);  // Copy back to original frame
+    return newLength;
 }
 
 ////////////////////////////////////////////////
@@ -247,7 +286,7 @@ int llclose(int showStatistics) {
         unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, DISCONNECT, (TRANSMITER_ADDRESS ^ DISCONNECT) ,FRAME};
         if(writeBytesSerialPort(CLOSE_WORD,5) < 0) return -1;
 
-        while (alarmEnabled) {
+        while (alarmTrigger == FALSE) {
             if (readByteSerialPort(&rcv) > 0) {
                 switch (state) {
                     case START_SM:

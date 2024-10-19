@@ -67,4 +67,10 @@ int llread(unsigned char *packet);
 // Return "1" on success or "-1" on error.
 int llclose(int showStatistics);
 
+unsigned char calculateBCC2(unsigned char *data, int length);
+
+int byteStuffing(unsigned char *frame, int length);
+
+int byteDestuffing(unsigned char *frame, int length);
+
 #endif // _LINK_LAYER_H_
