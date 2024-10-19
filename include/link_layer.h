@@ -4,19 +4,29 @@
 #ifndef _LINK_LAYER_H_
 #define _LINK_LAYER_H_
 
+// F
 #define FRAME              0x7E
-#define TRANSMITER_ADDRESS 0x03
-#define RECIEVER_ADDRESS   0x01
+
+// A
+#define TRANSMITER_ADDRESS 0x03 
+#define RECIEVER_ADDRESS   0x01 
+
+// C 
 #define SET                0x03
 #define UA                 0x07
+#define C_RR0              0xAA
+#define C_RR1              0xAB
+#define C_REJ0             0x54
+#define C_REJ1             0x55
 #define DISCONNECT         0x0B
 
+// Byte Stuffing Control
 #define ESCAPE             0x7D
 #define ESCAPE2            0x5E
 #define ESCAPE3            0x5D
 
+// ALARM
 #define SIGALRM 14
-
 
 typedef enum {
 	START_SM,
