@@ -7,6 +7,7 @@
 #include <string.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -27,7 +28,7 @@ void alarmHandler(int signal) {
     counter++;
 }
 
-int fd = 0;
+extern int fd;
 
 ////////////////////////////////////////////////
 // LLOPEN
@@ -172,23 +173,13 @@ int llopen(LinkLayer connectionParameters) {
 // LLWRITE
 ////////////////////////////////////////////////
 
-unsigned char calculateBCC2(unsigned char *data, int length) {
+unsigned char calculateBCC2(const unsigned char *data, int length) {
     unsigned char bcc2 = 0x00;
+
     for (int i = 0; i < length; i++) {
         bcc2 ^= data[i];  // XOR para cada byte
     }
     return bcc2;
-}
-
-unsigned char readControlWord(int fd){
-    unsigned char current_byte = 0x00; 
-    unsigned char cField = 0x00;
-
-    state_t state = START_SM;
-
-    while(state != STOP_SM && alarmTrigger == FALSE) {
-
-    }
 }
 
 int llwrite(const unsigned char *buf, int bufSize) {

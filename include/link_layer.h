@@ -79,7 +79,7 @@ int llread(unsigned char *packet);
 // Return "1" on success or "-1" on error.
 int llclose(int showStatistics);
 
-unsigned char calculateBCC2(unsigned char *data, int length);
+unsigned char calculateBCC2(const unsigned char *data, int length);
 
 int byteStuffing(unsigned char *frame, int length);
 
