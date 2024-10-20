@@ -19,6 +19,8 @@ int counter = 0;
 int nAttempts; // should be final, not changed
 int nTimeout; // should be final, not changed
 
+unsigned char control_C_RX = 1;
+
 // Alarm function handler
 void alarmHandler(int signal) {
     alarmTrigger = TRUE;
@@ -299,8 +301,109 @@ int llwrite(const unsigned char *buf, int bufSize) {
 // LLREAD
 ////////////////////////////////////////////////
 int llread(unsigned char *packet){
-    // TODO
-    return 0;
+
+    state_t state = START_SM;
+
+    unsigned char rcv;
+    unsigned char control;
+
+    int i = 0;
+
+    while(state != STOP_SM){
+        if(readByteSerialPort(&rcv) == -1){
+            return -1; //deu erro
+        }
+        else{
+            switch(state){
+                case START_SM:
+                    if(rcv == FRAME) state = FLAG_OK;
+                    break;
+                case FLAG_OK:
+                    if(rcv == TRANSMITER_ADDRESS) state = A_OK;
+                    else if (rcv != FRAME) state = START_SM;
+                    break;
+                case A_OK:
+                    if (rcv == (0 << 6) || rcv == (1 << 6)){
+                        state = C_OK;
+                        control = rcv;
+                    }
+                    else if (rcv == FRAME) state = FLAG_OK;
+                    else if (rcv == 0x0B){
+                        //significa que terminou a conexão
+                        unsigned char byte[5];
+                        byte[0] = FRAME;
+                        byte[1] = RECIEVER_ADDRESS;
+                        byte[2] = 0x0B;
+                        byte[3] = (byte[1] ^ byte[2]);
+                        byte[4] = FRAME;
+                        writeBytesSerialPort(byte, sizeof(byte));
+                        return 0;
+                    }
+                    else state = START_SM;
+                    break;
+                case C_OK:
+                    if (rcv == (TRANSMITER_ADDRESS ^ control)) state = DATA;
+                    else if (rcv == FRAME) state = FLAG_OK;
+                    else state = START_SM;
+                    break;
+                case DATA: //aqui vamos ler a data passada no frame
+                    if (rcv == ESCAPE) state = DATA_ESCAPE;
+                    else if (rcv == FRAME){
+                        unsigned char bcc2 = packet[i - 1];
+                        i--;
+                        packet[i] = '\0';
+                        unsigned char acc = packet[0];
+                        for(unsigned int j = 1; j < i; j++){
+                            acc ^= packet[j];
+                        }
+                        if(bcc2 == acc){
+                            state = STOP_SM;
+                            unsigned char byte[5];
+                            byte[0] = FRAME;
+                            byte[1] = RECIEVER_ADDRESS;
+                            byte[2] = ((control_C_RX << 7) | 0x05);
+                            byte[3] = (byte[1] ^ byte[2]);
+                            byte[4] = FRAME;
+                            writeBytesSerialPort(byte, sizeof(byte));
+                            if(control_C_RX == 1){
+                                control_C_RX = 0;
+                            }
+                            else if(control_C_RX == 0){
+                                control_C_RX = 1;
+                            }
+                            return i;
+                        }
+                        else{
+                            //temos informação repetida
+                            unsigned char byte[5];
+                            byte[0] = FRAME;
+                            byte[1] = RECIEVER_ADDRESS;
+                            byte[2] = ((control_C_RX << 7) | 0x01);
+                            byte[3] = (byte[1] ^ byte[2]);
+                            byte[4] = FRAME;
+                            writeBytesSerialPort(byte, sizeof(byte));
+                            return -1;
+                        };
+                    }
+                    else{
+                        packet[i++] = rcv;
+                    }
+                    break;
+                case DATA_ESCAPE:
+                    state = DATA;
+                    if (rcv == ESCAPE || rcv == FRAME) packet[i++] = rcv;
+                    else{
+                        packet[i++] = ESCAPE;
+                        packet[i++] = rcv;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    return -1;
 }
 
 int byteDestuffing(unsigned char *frame, int length) {

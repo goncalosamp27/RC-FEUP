@@ -34,7 +34,9 @@ typedef enum {
 	A_OK,
 	C_OK,
 	BCC_OK,
-	STOP_SM
+	STOP_SM,
+    DATA,
+    DATA_ESCAPE
 } state_t;
 
 typedef enum
