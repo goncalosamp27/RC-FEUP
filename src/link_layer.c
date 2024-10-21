@@ -491,14 +491,15 @@ int llclose(int showStatistics) {
                 }
             }
             nAttempts--;
+
+            if(state != STOP_SM) return -1;
+            unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, UA, TRANSMITER_ADDRESS ^ UA,FRAME};
+            
+            if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
+                return -1;
+            }
         }
 
-        if(state != STOP_SM) return -1;
-        unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, UA, TRANSMITER_ADDRESS ^ UA,FRAME};
-        
-        if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
-            return -1;
-        }
 
         if(linklayer.role == LlRx) {
             unsigned char CLOSE_WORD[5] = {FRAME, RECIEVER_ADDRESS, DISCONNECT, (RECIEVER_ADDRESS ^ DISCONNECT) ,FRAME};
@@ -539,14 +540,13 @@ int llclose(int showStatistics) {
                 }
             }
             nAttempts--;
-        }
-
-        if(state != STOP_SM) return -1;
-        unsigned char CLOSE_WORD[5] = {FRAME, RECIEVER_ADDRESS, UA, (RECIEVER_ADDRESS ^ UA),FRAME};
-        
-        if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
-            return -1;
-        }   
+            if(state != STOP_SM) return -1;
+            unsigned char CLOSE_WORD[5] = {FRAME, RECIEVER_ADDRESS, UA, (RECIEVER_ADDRESS ^ UA),FRAME};
+            
+            if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
+                return -1;
+            } 
+        }  
     }
 
     int clstat = closeSerialPort();
