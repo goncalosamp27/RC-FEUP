@@ -190,7 +190,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
     frame[0] = FRAME;                 // FLAG
     frame[1] = TRANSMITER_ADDRESS;    // A
-    frame[2] = (control_C_TX << 6);              // C
+    frame[2] = (control_C_TX << 7);              // C
     frame[3] = (frame[1] ^ frame[2]); // BCC1
     
     // STUFFING //
@@ -376,6 +376,7 @@ int llread(unsigned char *packet){
                             byte[3] = (byte[1] ^ byte[2]);
                             byte[4] = FRAME;
                             writeBytesSerialPort(byte, sizeof(byte));
+
                             if(control_C_RX == 1){
                                 control_C_RX = 0;
                             }
@@ -396,7 +397,6 @@ int llread(unsigned char *packet){
                             else if(control_C_RX == 1){
                                 byte[2] = C_REJ1;
                             }
-                            byte[2] = ((control_C_RX << 7) | 0x01);
                             byte[3] = (byte[1] ^ byte[2]);
                             byte[4] = FRAME;
                             writeBytesSerialPort(byte, sizeof(byte));
@@ -493,7 +493,7 @@ int llclose(int showStatistics) {
             nAttempts--;
 
             if(state != STOP_SM) return -1;
-            unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, UA, TRANSMITER_ADDRESS ^ UA,FRAME};
+            unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, UA, (TRANSMITER_ADDRESS ^ UA),FRAME};
             
             if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
                 return -1;
@@ -548,7 +548,6 @@ int llclose(int showStatistics) {
             } 
         }  
     }
-
     int clstat = closeSerialPort();
     return clstat;
 }
