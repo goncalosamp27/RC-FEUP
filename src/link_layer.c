@@ -352,16 +352,22 @@ int llread(unsigned char *packet){
                         unsigned char bcc2 = packet[i - 1];
                         i--;
                         packet[i] = '\0';
-                        unsigned char acc = packet[0];
+                        unsigned char bcc2_compare = packet[0];
                         for(unsigned int j = 1; j < i; j++){
-                            acc ^= packet[j];
+                            bcc2_compare ^= packet[j];
                         }
-                        if(bcc2 == acc){
+                        if(bcc2 == bcc2_compare){
                             state = STOP_SM;
                             unsigned char byte[5];
                             byte[0] = FRAME;
                             byte[1] = RECIEVER_ADDRESS;
-                            byte[2] = ((control_C_RX << 7) | 0x05);
+                            //0xAA ou 0xAB dependendo do control_C_RX
+                            if(control_C_RX == 0){
+                                byte[2] = C_RR0;
+                            }
+                            else if(control_C_RX == 1){
+                                byte[2] = C_RR1;
+                            }
                             byte[3] = (byte[1] ^ byte[2]);
                             byte[4] = FRAME;
                             writeBytesSerialPort(byte, sizeof(byte));
@@ -378,6 +384,13 @@ int llread(unsigned char *packet){
                             unsigned char byte[5];
                             byte[0] = FRAME;
                             byte[1] = RECIEVER_ADDRESS;
+                            //0x54 ou 0x55 dependendo do control_c_RX
+                            if(control_C_RX == 0){
+                                byte[2] = C_REJ0;
+                            }
+                            else if(control_C_RX == 1){
+                                byte[2] = C_REJ1;
+                            }
                             byte[2] = ((control_C_RX << 7) | 0x01);
                             byte[3] = (byte[1] ^ byte[2]);
                             byte[4] = FRAME;
