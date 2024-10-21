@@ -1,13 +1,7 @@
 # Makefile to build the project
-# NOTE: This file must not be changed - oops
-
-# ------------------------ ! ------------------------
-# Adapted by Nuno Rios [up202206272@up.pt] to support macOS
-# ------------------------ ! ------------------------
+# NOTE: This file must not be changed.
 
 # Parameters
-OS := $(shell uname -s)
-
 CC = gcc
 CFLAGS = -Wall
 
@@ -16,13 +10,8 @@ INCLUDE = include/
 BIN = bin/
 CABLE_DIR = cable/
 
-ifeq ($(OS), Linux)
-	TX_SERIAL_PORT = /dev/ttyS10
-	RX_SERIAL_PORT = /dev/ttyS11
-else
-	TX_SERIAL_PORT = /tmp/ttyS10
-	RX_SERIAL_PORT = /tmp/ttyS11
-endif
+TX_SERIAL_PORT = /dev/ttyS10
+RX_SERIAL_PORT = /dev/ttyS11
 
 BAUD_RATE = 9600
 
@@ -36,11 +25,7 @@ all: $(BIN)/main $(BIN)/cable
 $(BIN)/main: main.c $(SRC)/*.c
 	$(CC) $(CFLAGS) -o $@ $^ -I$(INCLUDE)
 
-ifeq ($(OS), Linux)
 $(BIN)/cable: $(CABLE_DIR)/cable.c
-else
-$(BIN)/cable: $(CABLE_DIR)/cable_macos.c
-endif
 	$(CC) $(CFLAGS) -o $@ $^
 
 .PHONY: run_tx

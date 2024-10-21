@@ -21,6 +21,7 @@ int nAttempts; // should be final, not changed
 int nTimeout; // should be final, not changed
 
 unsigned char control_C_RX = 1;
+unsigned char control_C_TX = 0;
 
 // Alarm function handler
 void alarmHandler(int signal) {
@@ -188,7 +189,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
     frame[0] = FRAME;                 // FLAG
     frame[1] = TRANSMITER_ADDRESS;    // A
-    frame[2] = (0 << 6);              // C
+    frame[2] = (control_C_TX << 6);              // C
     frame[3] = (frame[1] ^ frame[2]); // BCC1
     
     // STUFFING //
@@ -273,7 +274,11 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
             if (current_byte == 0) continue;
             else if (current_byte == C_REJ0 || current_byte == C_REJ1) rejected = true;
-            else if (current_byte == C_RR0 || current_byte == C_RR1) accepted = true;
+            else if (current_byte == C_RR0 || current_byte == C_RR1) {
+                accepted = true;
+                if(control_C_TX == 0) control_C_TX = 1;
+                else control_C_TX = 0;
+            }
             else continue;
         } 
 
@@ -309,10 +314,12 @@ int llread(unsigned char *packet){
                 case START_SM:
                     if(rcv == FRAME) state = FLAG_OK;
                     break;
+
                 case FLAG_OK:
                     if(rcv == TRANSMITER_ADDRESS) state = A_OK;
                     else if (rcv != FRAME) state = START_SM;
                     break;
+
                 case A_OK:
                     if (rcv == (0 << 6) || rcv == (1 << 6)){
                         state = C_OK;
@@ -332,11 +339,13 @@ int llread(unsigned char *packet){
                     }
                     else state = START_SM;
                     break;
+
                 case C_OK:
                     if (rcv == (TRANSMITER_ADDRESS ^ control)) state = DATA;
                     else if (rcv == FRAME) state = FLAG_OK;
                     else state = START_SM;
                     break;
+
                 case DATA: //aqui vamos ler a data passada no frame
                     if (rcv == ESCAPE) state = DATA_ESCAPE;
                     else if (rcv == FRAME){
@@ -380,6 +389,7 @@ int llread(unsigned char *packet){
                         packet[i++] = rcv;
                     }
                     break;
+
                 case DATA_ESCAPE:
                     state = DATA;
                     if (rcv == ESCAPE || rcv == FRAME) packet[i++] = rcv;
@@ -388,6 +398,7 @@ int llread(unsigned char *packet){
                         packet[i++] = rcv;
                     }
                     break;
+                    
                 default:
                     break;
             }

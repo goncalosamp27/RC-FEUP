@@ -10,7 +10,6 @@
 void applicationLayer(const char *serialPort, const char *role, int baudRate, int nTries, int timeout, const char *filename) {
 	// LinkLayer struct creation
 	LinkLayer linklayer;
-
 	strcpy(linklayer.serialPort, serialPort);
 
 	if (strcmp(role, "tx") == 0) linklayer.role = LlTx;
