@@ -46,11 +46,13 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			long int imageSize = last_pos - initial_pos;
 			fseek(image, initial_pos, SEEK_SET);
 
-			// start control packet
+			// variables for both end and start control packets
 
 			int L1 = (int) ceil(log2f((float)imageSize)/8.0);// size of file
 			int L2 = strlen(filename);
 			unsigned int * size = 5 + L1 + L2; // 5 -> control + TL1 + TL2
+
+			// start control packet
 
 			unsigned char *packet_start;
 			unsigned int pos = 0;
@@ -70,9 +72,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			packet_start[pos++] = L2;
 			memcpy(packet_start + pos, filename, L2);
 
-			// data packet
+			if(llwrite(packet_start, size) == -1){
+				exit(-1);
+			}
 
-			
+			// data packet
 
 			// end control packet
 
@@ -93,6 +97,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			packet_end[pos2++] = 1;
 			packet_end[pos2++] = L2;
 			memcpy(packet_end + pos2, filename, L2);
+
+			if(llwrite(packet_end, size) == -1) {
+				exit(-1);
+			}
 
 			break;
 		}
