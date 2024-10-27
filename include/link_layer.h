@@ -25,6 +25,8 @@
 #define ESCAPE2            0x5E
 #define ESCAPE3            0x5D
 
+#define N(n) ((n) << 6)
+
 // ALARM
 #define SIGALRM 14
 

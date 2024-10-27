@@ -40,6 +40,7 @@ int llopen(LinkLayer connectionParameters) {
     int fd = openSerialPort(connectionParameters.serialPort, connectionParameters.baudRate);
 
     if(fd < 0){
+        perror("Connecting erro");
         return -1; //connection error
     }
 
@@ -185,36 +186,81 @@ unsigned char calculateBCC2(const unsigned char *data, int length) {
 }
 
 int llwrite(const unsigned char *buf, int bufSize) {
-    int frame_size = 6 + bufSize; // 6 = 4 posições iniciais + 2 finais, somamos o size do buffer
-    unsigned char *frame = (unsigned char *) malloc(frame_size); // alocar espaço na frame
 
-    frame[0] = FRAME;                 // FLAG
-    frame[1] = TRANSMITER_ADDRESS;    // A
-    frame[2] = (control_C_TX << 7);              // C
-    frame[3] = (frame[1] ^ frame[2]); // BCC1
-    
-    // STUFFING //
-    int current_byte = 4; // nao podemos escrever nos bytes ja ocupados frame[0,1,2,3]
-    for (int i = 0 ; i < bufSize ; i++) 
-    {
-        if (buf[i] == FRAME || buf[i] == ESCAPE) {
-            frame_size += 1; 
-            frame = realloc(frame, frame_size); // aumenta a size da frame em 1 para os escape macros
-            
-            frame[current_byte++] = ESCAPE; 
-            
-            frame[current_byte++] = (buf[i] == FRAME) ? ESCAPE2 : ESCAPE3;
-        }
-        else {
-            frame[current_byte++] = buf[i];
+    unsigned char BCC2 = calculateBCC2(buf, bufSize);
+
+    // int frame_size = 6 + bufSize; // 6 = 4 posições iniciais + 2 finais, somamos o size do buffer
+    // unsigned char *frame = (unsigned char *) malloc(frame_size); // alocar espaço na frame
+
+    // frame[0] = FRAME;                 // FLAG
+    // frame[1] = TRANSMITER_ADDRESS;    // A
+    // frame[2] = (control_C_TX << 7);              // C
+    // frame[3] = (frame[1] ^ frame[2]); // BCC1
+
+    unsigned char *dataBCC2 = (unsigned char *)malloc(2 * bufSize + 2);
+    if(!dataBCC2){
+        //erro na alocação
+        return -1;
+    }
+
+    // STUFFING // 
+
+    int i = 0;
+    for(int j = 0; j < bufSize; i++){
+        if(buf[j] == FRAME){
+            dataBCC2[i++] = ESCAPE;
+            dataBCC2[i++] = ESCAPE2;
+        } else if(buf[j] == ESCAPE){
+            dataBCC2[i++] = ESCAPE;
+            dataBCC2[i++] = ESCAPE3;
+        } else{
+            dataBCC2[i++] = buf[j]; //aqui nao alteramos
         }
     }
 
-    // BCC CREATION //
-    unsigned char BCC2 = calculateBCC2(buf, bufSize);
+    if(BCC2 == FRAME){
+        dataBCC2[i++] = ESCAPE;
+        dataBCC2[i++] = ESCAPE2;
+    } else if(BCC2 == ESCAPE){
+        dataBCC2[i++] = ESCAPE;
+        dataBCC2[i++] = ESCAPE3;
+    } else{
+        dataBCC2[i++] = BCC2; //mais uma vez nao se altera se nao for flag ou escape
+    }
 
-    frame[current_byte++] = BCC2; 
-    frame[current_byte] = FRAME;
+    unsigned char *frame = (unsigned char *)malloc(i + 5);
+    frame[0] = FRAME;
+    frame[1] = TRANSMITER_ADDRESS;
+
+    static unsigned char trama1 = 0;
+    unsigned char c = N(trama1);
+    frame[2] = c;
+    frame[3] = (frame[1] ^ frame[2]);
+    memcpy(&frame[4], dataBCC2, i);
+    frame[i + 4] = FRAME;
+
+    int frame_size = i + 5;
+    free(dataBCC2);
+    
+    // STUFFING //
+    // int current_byte = 4; // nao podemos escrever nos bytes ja ocupados frame[0,1,2,3]
+    // for (int i = 0 ; i < bufSize ; i++) 
+    // {
+    //     if (buf[i] == FRAME || buf[i] == ESCAPE) {
+    //         frame_size += 1; 
+    //         frame = realloc(frame, frame_size); // aumenta a size da frame em 1 para os escape macros
+            
+    //         frame[current_byte++] = ESCAPE; 
+            
+    //         frame[current_byte++] = (buf[i] == FRAME) ? ESCAPE2 : ESCAPE3;
+    //     }
+    //     else {
+    //         frame[current_byte++] = buf[i];
+    //     }
+    // }
+
+    // frame[current_byte++] = BCC2; 
+    // frame[current_byte] = FRAME;
 
     int nTransmition = 0;
 
@@ -277,8 +323,8 @@ int llwrite(const unsigned char *buf, int bufSize) {
             else if (current_byte == C_REJ0 || current_byte == C_REJ1) rejected = true;
             else if (current_byte == C_RR0 || current_byte == C_RR1) {
                 accepted = true;
-                if(control_C_TX == 0) control_C_TX = 1;
-                else control_C_TX = 0;
+                if(trama1 == 0) trama1 = 1;
+                else trama1 = 0;
             }
             else continue;
         } 
@@ -301,6 +347,8 @@ int llread(unsigned char *packet){
 
     state_t state = START_SM;
 
+    static unsigned char trama1;
+
     unsigned char rcv;
     unsigned char control;
 
@@ -322,7 +370,7 @@ int llread(unsigned char *packet){
                     break;
 
                 case A_OK:
-                    if (rcv == (0 << 6) || rcv == (1 << 6)){
+                    if (rcv == (trama1 << 6) || rcv == (trama1 << 6)){
                         state = C_OK;
                         control = rcv;
                     }
@@ -367,21 +415,21 @@ int llread(unsigned char *packet){
                             byte[0] = FRAME;
                             byte[1] = RECIEVER_ADDRESS;
                             //0xAA ou 0xAB dependendo do control_C_RX
-                            if(control_C_RX == 0){
+                            if(trama1 == 0){
                                 byte[2] = C_RR0;
                             }
-                            else if(control_C_RX == 1){
+                            else if(trama1 == 1){
                                 byte[2] = C_RR1;
                             }
                             byte[3] = (byte[1] ^ byte[2]);
                             byte[4] = FRAME;
                             writeBytesSerialPort(byte, sizeof(byte));
 
-                            if(control_C_RX == 1){
-                                control_C_RX = 0;
+                            if(trama1 == 1){
+                                trama1 = 0;
                             }
-                            else if(control_C_RX == 0){
-                                control_C_RX = 1;
+                            else if(trama1 == 0){
+                                trama1 = 1;
                             }
                             return i;
                         }
@@ -391,10 +439,10 @@ int llread(unsigned char *packet){
                             byte[0] = FRAME;
                             byte[1] = RECIEVER_ADDRESS;
                             //0x54 ou 0x55 dependendo do control_c_RX
-                            if(control_C_RX == 0){
+                            if(trama1 == 0){
                                 byte[2] = C_REJ0;
                             }
-                            else if(control_C_RX == 1){
+                            else if(trama1 == 1){
                                 byte[2] = C_REJ1;
                             }
                             byte[3] = (byte[1] ^ byte[2]);
@@ -410,11 +458,7 @@ int llread(unsigned char *packet){
 
                 case DATA_ESCAPE:
                     state = DATA;
-                    if (rcv == ESCAPE || rcv == FRAME) packet[i++] = rcv;
-                    else{
-                        packet[i++] = ESCAPE;
-                        packet[i++] = rcv;
-                    }
+                    packet[i++] = rcv ^ 0x20;
                     break;
                     
                 default:
