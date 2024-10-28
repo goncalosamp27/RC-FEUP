@@ -495,11 +495,14 @@ int llclose(int showStatistics) {
 
     unsigned char rcv;
     
+    alarmTrigger = FALSE;
     while (nAttempts != 0 && state != STOP_SM){
+        
         if(linklayer.role == LlTx) {
             unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, DISCONNECT, (TRANSMITER_ADDRESS ^ DISCONNECT) ,FRAME};
             if(writeBytesSerialPort(CLOSE_WORD,5) < 0) return -1;
 
+            alarm(nTimeout);
             while (alarmTrigger == FALSE) {
                 if (readByteSerialPort(&rcv) > 0) {
                     switch (state) {
@@ -549,6 +552,7 @@ int llclose(int showStatistics) {
             unsigned char CLOSE_WORD[5] = {FRAME, RECIEVER_ADDRESS, DISCONNECT, (RECIEVER_ADDRESS ^ DISCONNECT) ,FRAME};
             if(writeBytesSerialPort(CLOSE_WORD,5) < 0) return -1;
 
+            alarm(nTimeout);
             while (alarmTrigger == FALSE) {
                 if (readByteSerialPort(&rcv) > 0) {
                     switch (state) {
@@ -584,6 +588,7 @@ int llclose(int showStatistics) {
                 }
             }
             nAttempts--;
+
             if(state != STOP_SM) return -1;
             unsigned char CLOSE_WORD[5] = {FRAME, RECIEVER_ADDRESS, UA, (RECIEVER_ADDRESS ^ UA),FRAME};
             
