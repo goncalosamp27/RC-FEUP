@@ -32,6 +32,9 @@ void alarmHandler(int signal) {
 extern int fd;
 LinkLayerRole role_;
 
+int totalDataBytesWrite = 0;
+int totalDataBytesRead = 0;
+
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
@@ -71,11 +74,12 @@ int llopen(LinkLayer connectionParameters) {
             }
 
             while(alarmTrigger == FALSE && state != STOP_SM){
-                if(readByteSerialPort(&rcv) <= 0){
+                int check = readByteSerialPort(&rcv);
+                if(check == -1){
                     printf("foi aqui 2\n");
                     return -1;
                 }
-                else{
+                else if(check == 1){
                     switch (state) {
                         case START_SM:
                             if (rcv == FRAME) state = FLAG_OK;
@@ -188,6 +192,8 @@ unsigned char calculateBCC2(const unsigned char *data, int length) {
 
 int llwrite(const unsigned char *buf, int bufSize) {
 
+    totalDataBytesWrite += bufSize - 4;
+
     unsigned char BCC2 = calculateBCC2(buf, bufSize);
 
     // int frame_size = 6 + bufSize; // 6 = 4 posições iniciais + 2 finais, somamos o size do buffer
@@ -200,6 +206,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
     unsigned char *dataBCC2 = (unsigned char *)malloc(2 * bufSize + 2);
     if(!dataBCC2){
+         printf("erro alocação\n");
         //erro na alocação
         return -1;
     }
@@ -230,6 +237,8 @@ int llwrite(const unsigned char *buf, int bufSize) {
     } else{
         dataBCC2[i++] = BCC2; //mais uma vez nao se altera se nao for flag ou escape
     }
+
+     printf("stuffing ta fixe\n");
 
     unsigned char *frame = (unsigned char *)malloc(i + 5);
     frame[0] = FRAME;
@@ -276,14 +285,19 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
         while(alarmTrigger == FALSE && !rejected && !accepted) {
             if(writeBytesSerialPort(frame, frame_size) == -1) return -1;
+
+            printf("escreveu fixe\n");
             
-            unsigned char current_byte = 0x00; 
-            unsigned char byte_in_c = 0x00;
+            unsigned char current_byte;
+            printf("ta igual a zero o byte_in_c\n");
+            unsigned char byte_in_c = 0x00; 
 
             state_t state = START_SM;
 
+            printf("inicou state machine\n");
+
             while(state != STOP_SM && alarmTrigger == FALSE) {
-                if(readByteSerialPort(&current_byte) != -1) {
+                if(readByteSerialPort(&current_byte) == 1) {
                     switch (state)
                     {
                     case START_SM:
@@ -293,18 +307,17 @@ int llwrite(const unsigned char *buf, int bufSize) {
                     case FLAG_OK:
                         if(current_byte == RECIEVER_ADDRESS) state = A_OK;
                         else if (current_byte != FRAME) state = START_SM;
-                    
+                        break;
                     case A_OK:
                         if(current_byte == C_RR0 || current_byte == C_RR1 || current_byte == C_REJ0 || current_byte == C_REJ1 || current_byte == DISCONNECT) {
                             state = C_OK;
                             byte_in_c = current_byte;
                         }
-
                         else if (current_byte == FRAME) state = FLAG_OK;
                         else state = START_SM;
-
+                        break;
                     case C_OK:
-                        if(current_byte == (RECIEVER_ADDRESS ^  byte_in_c)) {
+                        if(current_byte == (RECIEVER_ADDRESS  ^  byte_in_c)) {
                             state = BCC_OK;
                         }
                         else if(current_byte == FRAME) state = FLAG_OK;
@@ -322,10 +335,11 @@ int llwrite(const unsigned char *buf, int bufSize) {
                 }
             }   // finished checking state machine, already have c value in "byte_in_c"
 
-            if (current_byte == 0) continue;
-            else if (current_byte == C_REJ0 || current_byte == C_REJ1) rejected = true;
-            else if (current_byte == C_RR0 || current_byte == C_RR1) {
+            if (byte_in_c == 0) continue;
+            else if (byte_in_c == C_REJ0 || byte_in_c == C_REJ1) rejected = true;
+            else if (byte_in_c == C_RR0 || byte_in_c == C_RR1) {
                 accepted = true;
+                printf("foi aceite\n");
                 if(trama1 == 0) trama1 = 1;
                 else trama1 = 0;
             }
@@ -337,9 +351,10 @@ int llwrite(const unsigned char *buf, int bufSize) {
     }
 
     free(frame);
-    if(accepted) return frame_size;
-    
-    llclose(fd);
+    if(accepted){
+        printf("chegou ao fim write\n");
+        return frame_size;
+    }
     return -1;
 }
 
@@ -357,11 +372,14 @@ int llread(unsigned char *packet){
 
     int i = 0;
 
+    printf("entrou read linklayer\n");
+
     while(state != STOP_SM){
-        if(readByteSerialPort(&rcv) == -1){
+        int check = readByteSerialPort(&rcv);
+        if(check == -1){
             return -1; //deu erro
         }
-        else{
+        else if(check == 1){
             switch(state){
                 case START_SM:
                     if(rcv == FRAME) state = FLAG_OK;
@@ -434,6 +452,7 @@ int llread(unsigned char *packet){
                             else if(trama1 == 0){
                                 trama1 = 1;
                             }
+                            printf("chegou ao fim read\n");
                             return i;
                         }
                         else{
@@ -456,12 +475,14 @@ int llread(unsigned char *packet){
                     }
                     else{
                         packet[i++] = rcv;
+                        totalDataBytesRead++;
                     }
                     break;
 
                 case DATA_ESCAPE:
                     state = DATA;
                     packet[i++] = rcv ^ 0x20;
+                    totalDataBytesRead++;
                     break;
                     
                 default:
@@ -494,6 +515,9 @@ int byteDestuffing(unsigned char *frame, int length) {
 int llclose(int showStatistics) {
 
     state_t state = START_SM;
+
+    printf("BytesEscritos%d\n", totalDataBytesWrite);
+    printf("BytesLidos%d\n", totalDataBytesRead);
 
     unsigned char rcv;
     
@@ -552,11 +576,12 @@ int llclose(int showStatistics) {
     }
     else if(role_ == LlRx){
         while(state != STOP_SM){
-            if(readByteSerialPort(&rcv) == -1){
+            int check = readByteSerialPort(&rcv);
+            if(check == -1){
                     printf("foi aqui deu\n");
                     return -1;
             }
-            else{
+            else if(check == 1){
                 switch (state) {
                     case START_SM:
                         if (rcv == FRAME) state = FLAG_OK;
@@ -600,6 +625,7 @@ int llclose(int showStatistics) {
     }
 
     int clstat = closeSerialPort();
+    printf("chegou ao fim close\n");
     return clstat;
 }
 

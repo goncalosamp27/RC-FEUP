@@ -10,6 +10,7 @@
 
 int showstats = 0;
 
+
 char log2aux(int number) {
     char result = 0x00;   
     if (number == 0) return -1;  
@@ -90,6 +91,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			image_to_bytes = (unsigned char *)malloc(sizeof(unsigned char) * imageSize);
 
 			size_t bytesRead = fread(image_to_bytes, sizeof(unsigned char), imageSize, image);
+			printf("BytesRead%d", (int)bytesRead);
 
 			if (bytesRead != imageSize) {
 				perror("Erro ao ler a imagem");
@@ -127,15 +129,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 				sequence_value = (sequence_value + 1) % 100;
 				image_to_bytes += size_of_data_field;
 				number_of_bytes_to_write -= size_of_data_field;
-
+				
 				free(data_packet);
 				free(packet_data_field);
 			}
-
-			free(image_to_bytes);
+			//free(image_to_bytes);
 
 			// end control packet
-			unsigned char *packet_end = (unsigned char*) malloc(size); 
+			printf("packet_end antes\n");
+			unsigned char *packet_end = (unsigned char*)malloc(size);
+			printf("packet end depois\n"); 
 			unsigned int pos2 = 0;
 
 			packet_end[pos2++] = 3; // values 3 -> end
@@ -167,10 +170,12 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			FILE *newFile = fopen(filename, "wb"); //write back
 
 			while(TRUE){
-				unsigned char *p = (unsigned char *)malloc(256);
-				int first = p[0];
-				if(llread(p) > 0){
+				unsigned char *p = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+				int bytes = llread(p);
+				if(bytes > 0){
+					unsigned char first = p[0];
 					if(first == 1 || first == 3){ //é control packet (ve powerpoint)
+					 	printf("deu estrala no if do read\n");
 						unsigned char length = p[2];
 						int size = 0;
 
@@ -188,28 +193,30 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 
 						if (first == 1) {
             				printf("Começar a receber: %s (%d bytes)\n", new, size);
-        				} else if (first == 2) {
+        				} else if (first == 3) {
             				printf("Fim da recepção: %s (%d bytes)\n", new, size);
             				free(new);  // Liberar memória antes de sair
             				break;
         				}
 					}
 					else if(first == 2){ //é data packet
-						int size = p[1] * 256 + p[2];
-						fwrite(p + 3, sizeof(unsigned char), size, newFile);
+						int L2_2 = p[2] << 8;  // Higher byte
+    					int L1_1 = p[3];
+						int sum = L2_2 + L1_1;
+						printf("SOMA L2 E L1 %d \n", sum);
+						fwrite(p + 4, sizeof(unsigned char), sum, newFile);
 					}
 				}
 				free(p);
 			}
 			fclose(newFile);
+			llclose(1);
 		}
 		
 		default:
 			exit(-1);
 			break;
 	}
-
-	llclose(1);
 }
 
 /*
