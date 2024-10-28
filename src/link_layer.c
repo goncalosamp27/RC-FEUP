@@ -491,69 +491,20 @@ int byteDestuffing(unsigned char *frame, int length) {
 int llclose(int showStatistics) {
 
     state_t state = START_SM;
-    (void)signal(SIGALRM, alarmHandler);
 
     unsigned char rcv;
     
     alarmTrigger = FALSE;
-    while (nAttempts != 0 && state != STOP_SM){
-        
-        if(linklayer.role == LlTx) {
+
+    if(linklayer.role == LlTx){
+        (void)signal(SIGALRM, alarmHandler);
+
+        while (nAttempts != 0 && state != STOP_SM){
             unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, DISCONNECT, (TRANSMITER_ADDRESS ^ DISCONNECT) ,FRAME};
             if(writeBytesSerialPort(CLOSE_WORD,5) < 0) return -1;
 
             alarm(nTimeout);
-            while (alarmTrigger == FALSE) {
-                if (readByteSerialPort(&rcv) > 0) {
-                    switch (state) {
-                        case START_SM:
-                            if (rcv == FRAME) state = FLAG_OK;
-                                break;
-
-                        case FLAG_OK:
-                            if (rcv == TRANSMITER_ADDRESS) state = A_OK;
-                            else if (rcv != FRAME) state = START_SM;
-                            break;
-
-                        case A_OK:
-                            if (rcv == DISCONNECT) state = C_OK;
-                            else if (rcv == FRAME) state = FLAG_OK;
-                            else state = START_SM;
-                            break; 
-
-                    case C_OK:
-                            if (rcv == (TRANSMITER_ADDRESS ^ DISCONNECT)) state = BCC_OK;
-                            else if (rcv == FRAME) state = FLAG_OK;
-                            else state = START_SM;
-                            break;
-
-                        case BCC_OK:
-                            if (rcv == FRAME) state = STOP_SM;
-                            else state = START_SM;
-                            break;
-
-                        default:
-                            return -1;
-                    }
-                }
-            }
-            nAttempts--;
-
-            if(state != STOP_SM) return -1;
-            unsigned char CLOSE_WORD[5] = {FRAME, TRANSMITER_ADDRESS, UA, (TRANSMITER_ADDRESS ^ UA),FRAME};
-            
-            if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
-                return -1;
-            }
-        }
-
-
-        if(linklayer.role == LlRx) {
-            unsigned char CLOSE_WORD[5] = {FRAME, RECIEVER_ADDRESS, DISCONNECT, (RECIEVER_ADDRESS ^ DISCONNECT) ,FRAME};
-            if(writeBytesSerialPort(CLOSE_WORD,5) < 0) return -1;
-
-            alarm(nTimeout);
-            while (alarmTrigger == FALSE) {
+            while(alarmTrigger == FALSE){
                 if (readByteSerialPort(&rcv) > 0) {
                     switch (state) {
                         case START_SM:
@@ -571,7 +522,7 @@ int llclose(int showStatistics) {
                             else state = START_SM;
                             break; 
 
-                        case C_OK:
+                    case C_OK:
                             if (rcv == (RECIEVER_ADDRESS ^ DISCONNECT)) state = BCC_OK;
                             else if (rcv == FRAME) state = FLAG_OK;
                             else state = START_SM;
@@ -583,20 +534,68 @@ int llclose(int showStatistics) {
                             break;
 
                         default:
-                            return -1;
+                            break;
                     }
                 }
             }
             nAttempts--;
 
             if(state != STOP_SM) return -1;
-            unsigned char CLOSE_WORD[5] = {FRAME, RECIEVER_ADDRESS, UA, (RECIEVER_ADDRESS ^ UA),FRAME};
-            
-            if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
-                return -1;
-            } 
-        }  
+        }
+        unsigned char CLOSE_WORD[5] = {FRAME, RECIEVER_ADDRESS, UA, (RECIEVER_ADDRESS ^ UA),FRAME};
+        if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
+            return -1;
+        }
     }
+    else if(linklayer.role == LlRx){
+        while(state != STOP_SM){
+            if(readByteSerialPort(&rcv) == -1){
+                    printf("foi aqui deu\n");
+                    return -1;
+            }
+            else{
+                switch (state) {
+                    case START_SM:
+                        if (rcv == FRAME) state = FLAG_OK;
+                        break;
+
+                    case FLAG_OK:
+                        if (rcv == TRANSMITER_ADDRESS) state = A_OK;
+                        else if (rcv != FRAME) state = START_SM;
+                        break;
+
+                    case A_OK:
+                        if (rcv == DISCONNECT) state = C_OK;
+                        else if (rcv == FRAME) state = FLAG_OK;
+                        else state = START_SM;
+                        break;
+
+                    case C_OK:
+                        if (rcv == (TRANSMITER_ADDRESS ^ DISCONNECT)) state = BCC_OK;
+                        else if (rcv == FRAME) state = FLAG_OK;
+                        else state = START_SM;
+                        break;
+
+                    case BCC_OK:
+                        if (rcv == FRAME) state = STOP_SM;
+                        else state = START_SM;
+                        break;
+
+                    default:
+                        break;
+                }
+            }
+        }
+        if(state != STOP_SM) return -1;
+        unsigned char CLOSE_WORD[5] = {FRAME, RECIEVER_ADDRESS, DISCONNECT, (RECIEVER_ADDRESS ^ DISCONNECT),FRAME};
+        if(writeBytesSerialPort(CLOSE_WORD,5) < 0){
+            return -1;
+        }
+    }
+    else{
+        return -1; //nao é tx ne rx
+    }
+
     int clstat = closeSerialPort();
     return clstat;
 }
