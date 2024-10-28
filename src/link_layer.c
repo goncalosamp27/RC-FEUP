@@ -30,7 +30,7 @@ void alarmHandler(int signal) {
 }
 
 extern int fd;
-extern LinkLayer linklayer;
+LinkLayerRole role_;
 
 ////////////////////////////////////////////////
 // LLOPEN
@@ -51,6 +51,7 @@ int llopen(LinkLayer connectionParameters) {
     unsigned char rcv;
 
     if(connectionParameters.role == LlTx){
+        role_ = LlTx;
         (void) signal(SIGALRM, alarmHandler);
         
         while(state != STOP_SM && nAttempts != 0){
@@ -115,6 +116,7 @@ int llopen(LinkLayer connectionParameters) {
         }
     } 
     else if(connectionParameters.role == LlRx){
+            role_ = LlRx;
         while(state != STOP_SM){
             if(readByteSerialPort(&rcv) == -1){
                     printf("foi aqui deu\n");
@@ -496,7 +498,7 @@ int llclose(int showStatistics) {
     
     alarmTrigger = FALSE;
 
-    if(linklayer.role == LlTx){
+    if(role_ == LlTx){
         (void)signal(SIGALRM, alarmHandler);
 
         while (nAttempts != 0 && state != STOP_SM){
@@ -547,7 +549,7 @@ int llclose(int showStatistics) {
             return -1;
         }
     }
-    else if(linklayer.role == LlRx){
+    else if(role_ == LlRx){
         while(state != STOP_SM){
             if(readByteSerialPort(&rcv) == -1){
                     printf("foi aqui deu\n");

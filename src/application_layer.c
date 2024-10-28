@@ -8,7 +8,14 @@
 #include <string.h>
 #include <math.h>
 
-int showstats;
+int showstats = 0;
+
+char log2aux(int number) {
+    char result = 0x00;   
+    if (number == 0) return -1;  
+    while (number >>= 1) result++;
+    return result;     
+}
 
 void applicationLayer(const char *serialPort, const char *role, int baudRate, int nTries, int timeout, const char *filename) {
 	// LinkLayer struct creation
@@ -17,7 +24,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 
 	if (strcmp(role, "tx") == 0) linklayer.role = LlTx;
     else if (strcmp(role, "rx") == 0) linklayer.role = LlRx;
-	else return -1;
+	else exit(-1);
 
 	linklayer.baudRate = baudRate;
 	linklayer.nRetransmissions = nTries;
@@ -50,7 +57,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			long int imageSize = last_pos - initial_pos;
 			fseek(image, initial_pos, SEEK_SET);  // volta a pos inicial
 
-			int L1 = (int)(log2f((float)imageSize)/8.0) + 1;// size of file
+			int L1 = (int)(log2aux(imageSize) /8) + 1;// size of file
 			int L2 = strlen(filename);
 			unsigned int size = 5 + L1 + L2; // 5 -> control + bT1 + bL1 + bT1 + bL2... resto é dos V1 e V2 (valores de L1 e L2)
 
@@ -205,6 +212,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 	llclose(1);
 }
 
+/*
 unsigned char * createControlPack(unsigned int control_field, const char * filename, long int length, unsigned int * size) {
 
 }
+*/
