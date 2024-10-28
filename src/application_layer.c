@@ -125,7 +125,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 				free(packet_data_field);
 			}
 
-
 			free(image_to_bytes);
 
 			// end control packet
