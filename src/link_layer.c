@@ -46,17 +46,17 @@ int llopen(LinkLayer connectionParameters) {
 
     nAttempts = connectionParameters.nRetransmissions;
     nTimeout = connectionParameters.timeout;
+    role_ = connectionParameters.role;
 
     state_t state = START_SM;
     unsigned char rcv;
 
     if(connectionParameters.role == LlTx){
-        role_ = LlTx;
         (void) signal(SIGALRM, alarmHandler);
         
         while(state != STOP_SM && nAttempts != 0){
-            alarm(nTimeout);
             alarmTrigger = FALSE;
+            alarm(nTimeout);
 
             unsigned char buf[5];
             buf[0] = FRAME;
@@ -65,13 +65,13 @@ int llopen(LinkLayer connectionParameters) {
             buf[3] = (buf[1] ^ buf[2]);
             buf[4] = FRAME;
 
-            if(writeBytesSerialPort(buf, sizeof(buf)) == -1){
-                printf("foi aqui 1\n");
+            if(writeBytesSerialPort(buf, sizeof(buf)) <= 0){
+                printf("passou -> foi aqui 1\n");
                 return -1;
             }
 
             while(alarmTrigger == FALSE && state != STOP_SM){
-                if(readByteSerialPort(&rcv) == -1){
+                if(readByteSerialPort(&rcv) <= 0){
                     printf("foi aqui 2\n");
                     return -1;
                 }
@@ -116,7 +116,6 @@ int llopen(LinkLayer connectionParameters) {
         }
     } 
     else if(connectionParameters.role == LlRx){
-            role_ = LlRx;
         while(state != STOP_SM){
             if(readByteSerialPort(&rcv) == -1){
                     printf("foi aqui deu\n");
@@ -160,7 +159,7 @@ int llopen(LinkLayer connectionParameters) {
         buf[0] = FRAME;
         buf[1] = RECIEVER_ADDRESS;
         buf[2] = UA;
-        buf[3] = (buf[1] ^ buf[2]);
+        buf[3] = (RECIEVER_ADDRESS ^ UA);
         buf[4] = FRAME;
 
         if(writeBytesSerialPort(buf, sizeof(buf)) == -1){
@@ -208,14 +207,16 @@ int llwrite(const unsigned char *buf, int bufSize) {
     // STUFFING // 
 
     int i = 0;
-    for(int j = 0; j < bufSize; i++){
+    for(int j = 0; j < bufSize; j++){
         if(buf[j] == FRAME){
             dataBCC2[i++] = ESCAPE;
             dataBCC2[i++] = ESCAPE2;
-        } else if(buf[j] == ESCAPE){
+        } 
+        else if(buf[j] == ESCAPE) {
             dataBCC2[i++] = ESCAPE;
             dataBCC2[i++] = ESCAPE3;
-        } else{
+        } 
+        else {
             dataBCC2[i++] = buf[j]; //aqui nao alteramos
         }
     }
