@@ -157,12 +157,52 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 		
 		case LlRx:{
 			// vamos ter de ler o ficheiro (da ligação), escrevê-lo e fechar a ligação
+			FILE *newFile = fopen(filename, "wb"); //write back
+
+			while(TRUE){
+				unsigned char *p = (unsigned char *)malloc(256);
+				int first = p[0];
+				if(llread(p) > 0){
+					if(first == 1 || first == 3){ //é control packet (ve powerpoint)
+						unsigned char length = p[2];
+						int size = 0;
+
+						for(int i = 0; i < length; i++){
+							size = size << 8;
+							size = size | p[3+i];
+						}
+
+						unsigned char nameLength = p[3 + length]; //tamanho do nome
+
+						char *new = (char *)malloc(nameLength + 1); //alocar mem para o nome
+
+						memcpy(new, p + 4 + length, nameLength);
+						new[nameLength] = '\0'; //terminador
+
+						if (first == 1) {
+            				printf("Começar a receber: %s (%d bytes)\n", new, size);
+        				} else if (first == 2) {
+            				printf("Fim da recepção: %s (%d bytes)\n", new, size);
+            				free(new);  // Liberar memória antes de sair
+            				break;
+        				}
+					}
+					else if(first == 2){ //é data packet
+						int size = p[1] * 256 + p[2];
+						fwrite(p + 3, sizeof(unsigned char), size, newFile);
+					}
+				}
+				free(p)
+			}
+			fclose(newFile);
 		}
 		
 		default:
 			exit(-1);
 			break;
 	}
+
+	llclose(1);
 }
 
 unsigned char * createControlPack(unsigned int control_field, const char * filename, long int length, unsigned int * size) {
