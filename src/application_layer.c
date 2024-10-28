@@ -192,7 +192,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 						fwrite(p + 3, sizeof(unsigned char), size, newFile);
 					}
 				}
-				free(p)
+				free(p);
 			}
 			fclose(newFile);
 		}
