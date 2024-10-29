@@ -69,14 +69,14 @@ int llopen(LinkLayer connectionParameters) {
             buf[4] = FRAME;
 
             if(writeBytesSerialPort(buf, sizeof(buf)) <= 0){
-                printf("passou -> foi aqui 1\n");
+                printf("Error writing buf\n");
                 return -1;
             }
 
             while(alarmTrigger == FALSE && state != STOP_SM){
                 int check = readByteSerialPort(&rcv);
                 if(check == -1){
-                    printf("foi aqui 2\n");
+                    printf("Error reading rcv in tx in llopen\n");
                     return -1;
                 }
                 else if(check == 1){
@@ -115,7 +115,7 @@ int llopen(LinkLayer connectionParameters) {
             nAttempts--;
         }
         if(state != STOP_SM){
-            printf("foi aqui 3\n");
+            printf("llopen state machine did not reach STOP_SM state\n");
             return -1;
         }
     } 
@@ -123,7 +123,7 @@ int llopen(LinkLayer connectionParameters) {
         while(state != STOP_SM){
             int check = readByteSerialPort(&rcv);
             if(check == -1){
-                printf("foi aqui 2\n");
+                printf("Error reading rcv in rx in llopen\n");
                 return -1;
             }
             else if (check == 1){
@@ -174,7 +174,7 @@ int llopen(LinkLayer connectionParameters) {
     else {
         return -1;
     }
-    printf("chegou ao fim\n");
+    printf("llopen - success\n");
     return fd;
 }
 
@@ -207,7 +207,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
     unsigned char *dataBCC2 = (unsigned char *)malloc(2 * bufSize + 2);
     if(!dataBCC2){
-         printf("erro alocação\n");
+         printf("BCC2 error in memory allocation\n");
         //erro na alocação
         return -1;
     }
@@ -239,7 +239,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
         dataBCC2[i++] = BCC2; //mais uma vez nao se altera se nao for flag ou escape
     }
 
-     printf("stuffing ta fixe\n");
+    printf("\n   Stuffing fully done\n");
 
     unsigned char *frame = (unsigned char *)malloc(i + 5);
     frame[0] = FRAME;
@@ -287,15 +287,14 @@ int llwrite(const unsigned char *buf, int bufSize) {
         while(alarmTrigger == FALSE && !rejected && !accepted) {
             if(writeBytesSerialPort(frame, frame_size) == -1) return -1;
 
-            printf("escreveu fixe\n");
+            printf("   frame successfully written\n");
             
             unsigned char current_byte;
-            printf("ta igual a zero o byte_in_c\n");
             unsigned char byte_in_c = 0x00; 
 
             state_t state = START_SM;
 
-            printf("inicou state machine\n");
+            printf("   State Machine initiated\n");
 
             while(state != STOP_SM && alarmTrigger == FALSE) {
                 if(readByteSerialPort(&current_byte) == 1) {
@@ -335,12 +334,13 @@ int llwrite(const unsigned char *buf, int bufSize) {
                     }
                 }
             }   // finished checking state machine, already have c value in "byte_in_c"
+            printf("   State machine reached stop state\n");
 
             if (byte_in_c == 0) continue;
             else if (byte_in_c == C_REJ0 || byte_in_c == C_REJ1) rejected = true;
             else if (byte_in_c == C_RR0 || byte_in_c == C_RR1) {
                 accepted = true;
-                printf("foi aceite\n");
+                printf("   Current Byte was accepted, no errors found\n");
                 if(trama1 == 0) trama1 = 1;
                 else trama1 = 0;
             }
@@ -353,7 +353,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
     free(frame);
     if(accepted){
-        printf("chegou ao fim write\n");
+        printf("llwrite - success\n\n");
         return frame_size;
     }
     return -1;
@@ -373,7 +373,7 @@ int llread(unsigned char *packet){
 
     int i = 0;
 
-    printf("entrou read linklayer\n");
+    printf("Reading start\n");
 
     while(state != STOP_SM){
         int check = readByteSerialPort(&rcv);
@@ -453,7 +453,7 @@ int llread(unsigned char *packet){
                             else if(trama1 == 0){
                                 trama1 = 1;
                             }
-                            printf("chegou ao fim read\n");
+                            printf("    reading done\n");
                             return i;
                         }
                         else{
@@ -492,6 +492,8 @@ int llread(unsigned char *packet){
         }
     }
 
+    printf("llread - success\n");
+
     return -1;
 }
 
@@ -517,14 +519,13 @@ int llclose(int showStatistics) {
 
     state_t state = START_SM;
 
-    printf("BytesEscritos%d\n", totalDataBytesWrite);
-    printf("BytesLidos%d\n", totalDataBytesRead);
 
     unsigned char rcv;
     
     alarmTrigger = FALSE;
 
     if(role_ == LlTx){
+        printf("Bytes Written: %d\n", totalDataBytesWrite);
         (void)signal(SIGALRM, alarmHandler);
 
         while (nAttempts != 0 && state != STOP_SM){
@@ -576,10 +577,11 @@ int llclose(int showStatistics) {
         }
     }
     else if(role_ == LlRx){
+        printf("Bytes Read: %d\n", totalDataBytesRead);
         while(state != STOP_SM){
             int check = readByteSerialPort(&rcv);
             if(check == -1){
-                    printf("foi aqui deu\n");
+                    printf("Error reading rcv in llclose\n");
                     return -1;
             }
             else if(check == 1){
@@ -626,7 +628,7 @@ int llclose(int showStatistics) {
     }
 
     int clstat = closeSerialPort();
-    printf("chegou ao fim close\n");
+    printf("llclose - success\n");
     return clstat;
 }
 

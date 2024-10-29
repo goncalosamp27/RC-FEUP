@@ -50,6 +50,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 				exit(-1);
 			}
 
+			printf("\nFile successfully found\n");
+
 			// variables for both end and start control packets
 			long int initial_pos = ftell(image); // da nos a pos inicial
 			fseek(image, 0L, SEEK_END); // mover 0 bytes da posição inicial (em long) e procurar a posição final (SEEK_END)
@@ -91,16 +93,18 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			image_to_bytes = (unsigned char *)malloc(sizeof(unsigned char) * imageSize);
 
 			size_t bytesRead = fread(image_to_bytes, sizeof(unsigned char), imageSize, image);
-			printf("BytesRead%d", (int)bytesRead);
+			printf("Bytes Read (from image file): %d", (int)bytesRead);
 
 			if (bytesRead != imageSize) {
-				perror("Erro ao ler a imagem");
+				perror("Error reading image");
 				free(image_to_bytes);
 				exit(-1);
 			}
+			printf("\nImage successfully read");
 
 			long int number_of_bytes_to_write = imageSize;
 
+			int count = 1;
 			while(number_of_bytes_to_write > 0) {
 				int size_of_data_field;
 
@@ -122,9 +126,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
     			memcpy(data_packet + 4, packet_data_field, size_of_data_field);
 
 				if(llwrite(data_packet, (size_of_data_field + 4)) == -1) {
-                    printf("erro a escrever data packets\n");
+                    printf("Error writing data packets\n");
                     exit(-1);
                 }
+				printf("Data Packet %d created", count);
+				count++;
 
 				sequence_value = (sequence_value + 1) % 100;
 				image_to_bytes += size_of_data_field;
@@ -136,9 +142,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			//free(image_to_bytes);
 
 			// end control packet
-			printf("packet_end antes\n");
 			unsigned char *packet_end = (unsigned char*)malloc(size);
-			printf("packet end depois\n"); 
 			unsigned int pos2 = 0;
 
 			packet_end[pos2++] = 3; // values 3 -> end
@@ -168,14 +172,15 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 		case LlRx:{
 			// vamos ter de ler o ficheiro (da ligação), escrevê-lo e fechar a ligação
 			FILE *newFile = fopen(filename, "wb"); //write back
-
+			int i = 1;
 			while(TRUE){
 				unsigned char *p = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
 				int bytes = llread(p);
 				if(bytes > 0){
 					unsigned char first = p[0];
 					if(first == 1 || first == 3){ //é control packet (ve powerpoint)
-					 	printf("deu estrala no if do read\n");
+					 	if (first == 1) printf("\nstarted reading start control packets\n");
+						if (first == 3) printf("\nstarted reading end control packets\n");
 						unsigned char length = p[2];
 						int size = 0;
 
@@ -192,10 +197,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 						new[nameLength] = '\0'; //terminador
 
 						if (first == 1) {
-            				printf("Começar a receber: %s (%d bytes)\n", new, size);
+            				printf("Finished recieving start control packets: %s (%d bytes)\n", new, size);
         				} else if (first == 3) {
-            				printf("Fim da recepção: %s (%d bytes)\n", new, size);
-            				free(new);  // Liberar memória antes de sair
+            				printf("Finished recieving end control packets: %s (%d bytes)\n", new, size);
+            				free(new);  // Libertar memória antes de sair
             				break;
         				}
 					}
@@ -203,7 +208,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 						int L2_2 = p[2] << 8;  // Higher byte
     					int L1_1 = p[3];
 						int sum = L2_2 + L1_1;
-						printf("SOMA L2 E L1 %d \n", sum);
+						printf("\nReading Data Packet number: %d\n", i);
+						i++;
 						fwrite(p + 4, sizeof(unsigned char), sum, newFile);
 					}
 				}
@@ -218,9 +224,3 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			break;
 	}
 }
-
-/*
-unsigned char * createControlPack(unsigned int control_field, const char * filename, long int length, unsigned int * size) {
-
-}
-*/
