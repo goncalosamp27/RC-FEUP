@@ -121,11 +121,12 @@ int llopen(LinkLayer connectionParameters) {
     } 
     else if(connectionParameters.role == LlRx){
         while(state != STOP_SM){
-            if(readByteSerialPort(&rcv) == -1){
-                    printf("foi aqui deu\n");
-                    return -1;
+            int check = readByteSerialPort(&rcv);
+            if(check == -1){
+                printf("foi aqui 2\n");
+                return -1;
             }
-            else{
+            else if (check == 1){
                 switch (state) {
                     case START_SM:
                         if (rcv == FRAME) state = FLAG_OK;
