@@ -58,6 +58,7 @@
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "files.associations": {
     "unistd.h": "c",
-    "types.h": "c"
+    "types.h": "c",
+    "application_layer.h": "c"
   }
 }

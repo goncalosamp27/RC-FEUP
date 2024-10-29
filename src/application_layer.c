@@ -10,6 +10,12 @@
 
 int showstats = 0;
 
+int BCC2_hit = 0;
+int BCC2_fail = 0;
+int trama_switches_tx = 0;
+int trama_switches_rx = 0;
+int totalDataBytesWrite = 0;
+int totalDataBytesRead = 0;
 
 char log2aux(int number) {
     char result = 0x00;   
@@ -31,6 +37,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 	linklayer.nRetransmissions = nTries;
 	linklayer.timeout = timeout;
 
+	int llopencalls = 0;
 	// establish connection
 	int fd = llopen(linklayer);
 
@@ -39,9 +46,13 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
         perror("Connection error\n");
         exit(-1);
     }
+	else {
+		llopencalls++;
+	}
 
 	switch (linklayer.role) {
 		case LlTx: {
+
 			// vamos ter de ler o ficheiro (do PC), enviá-lo e fechar a ligação
 			FILE* image = fopen(filename, "rb"); // o rb le byte a byte sem alterar nada no ficheiro
 
@@ -103,8 +114,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 			printf("\nImage successfully read");
 
 			long int number_of_bytes_to_write = imageSize;
+			long int number_of_bytes_to_write_Stat = number_of_bytes_to_write;
 
-			int count = 1;
+			int count_of_data_packets = 0;
+			int count_of_data_packets_written = 0;
+
 			while(number_of_bytes_to_write > 0) {
 				int size_of_data_field;
 
@@ -125,12 +139,17 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 				data_packet[3] = L1_1;
     			memcpy(data_packet + 4, packet_data_field, size_of_data_field);
 
+				count_of_data_packets++;
+				printf("Data Packet %d created", count_of_data_packets);
+
 				if(llwrite(data_packet, (size_of_data_field + 4)) == -1) {
                     printf("Error writing data packets\n");
                     exit(-1);
                 }
-				printf("Data Packet %d created", count);
-				count++;
+				
+
+				count_of_data_packets_written++;
+				printf("Data Packet %d successfully written (%d Bytes)\n\n", count_of_data_packets_written, size_of_data_field);
 
 				sequence_value = (sequence_value + 1) % 100;
 				image_to_bytes += size_of_data_field;
@@ -165,17 +184,39 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 				exit(-1);
 			}
 
+			int llclose_calls = 0;
 			if(llclose(showstats) == -1) exit(-1);
+			llclose_calls++;
+			
+			printf("\n### Tx Statistics");
+			printf("\n### Number of llopen calls: %d", llopencalls);
+			printf("\n### Number of Bytes to write: %ld", number_of_bytes_to_write_Stat);
+			printf("\n### Number of Data Packets Created: %d", count_of_data_packets);
+			printf("\n### Number of Data Packets Written (number of llwrite calls): %d", count_of_data_packets_written);
+			printf("\n### BCC2 well written: %d", BCC2_hit);
+			printf("\n### BCC2 failure: %d", BCC2_fail);
+			printf("\n### Number of Trama Switches: %d", trama_switches_tx);
+			printf("\n### Number of Bytes written: %d", totalDataBytesWrite);
+			printf("\n### Number of llclose calls: %d", llclose_calls);
+			printf("\n\n");
+			
 			break;
 		}
 		
 		case LlRx:{
 			// vamos ter de ler o ficheiro (da ligação), escrevê-lo e fechar a ligação
 			FILE *newFile = fopen(filename, "wb"); //write back
-			int i = 1;
+			int n_of_datapackets = 0;
+			int llreadcalls = 0;
+			int bytes_read;
+
 			while(TRUE){
 				unsigned char *p = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
+
 				int bytes = llread(p);
+				llreadcalls++;
+				bytes_read += bytes;
+
 				if(bytes > 0){
 					unsigned char first = p[0];
 					if(first == 1 || first == 3){ //é control packet (ve powerpoint)
@@ -208,15 +249,28 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate, in
 						int L2_2 = p[2] << 8;  // Higher byte
     					int L1_1 = p[3];
 						int sum = L2_2 + L1_1;
-						printf("\nReading Data Packet number: %d\n", i);
-						i++;
+						n_of_datapackets++;
+						printf("\nReading Data Packet number: %d\n", n_of_datapackets);
 						fwrite(p + 4, sizeof(unsigned char), sum, newFile);
 					}
 				}
 				free(p);
 			}
 			fclose(newFile);
+
+			int llclose_calls = 0;
 			llclose(1);
+			llclose_calls++;
+
+			
+			printf("\n### Rx Statistics");
+			printf("\n### Number of llopen calls: %d", llopencalls);
+			printf("\n### Number of llread calls: %d", llreadcalls);
+			printf("\n### Number Data Packets read: %d", n_of_datapackets);
+			printf("\n### Number of Trama Switches: %d", trama_switches_rx);
+			printf("\n### Number of llclose calls: %d", llclose_calls);
+			printf("\n### Number of Bytes read: %d", totalDataBytesRead);
+			printf("\n\n");
 		}
 		
 		default:

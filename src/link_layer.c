@@ -13,6 +13,13 @@
 #define _POSIX_SOURCE 1 // POSIX compliant source
 #define BUF_SIZE 256
 
+extern int BCC2_hit;
+extern int BCC2_fail;
+extern int trama_switches_tx;
+extern int trama_switches_rx;
+extern int totalDataBytesWrite;
+extern int totalDataBytesRead;
+
 volatile int STOP = FALSE;
 
 int alarmTrigger = FALSE;
@@ -29,11 +36,8 @@ void alarmHandler(int signal) {
     counter++;
 }
 
-extern int fd;
 LinkLayerRole role_;
 
-int totalDataBytesWrite = 0;
-int totalDataBytesRead = 0;
 
 ////////////////////////////////////////////////
 // LLOPEN
@@ -337,12 +341,17 @@ int llwrite(const unsigned char *buf, int bufSize) {
             printf("   State machine reached stop state\n");
 
             if (byte_in_c == 0) continue;
-            else if (byte_in_c == C_REJ0 || byte_in_c == C_REJ1) rejected = true;
+            else if (byte_in_c == C_REJ0 || byte_in_c == C_REJ1) {
+                rejected = true;
+                BCC2_fail++;
+            }
             else if (byte_in_c == C_RR0 || byte_in_c == C_RR1) {
                 accepted = true;
+                BCC2_hit++;
                 printf("   Current Byte was accepted, no errors found\n");
                 if(trama1 == 0) trama1 = 1;
                 else trama1 = 0;
+                trama_switches_tx++;
             }
             else continue;
         } 
@@ -453,6 +462,7 @@ int llread(unsigned char *packet){
                             else if(trama1 == 0){
                                 trama1 = 1;
                             }
+                            trama_switches_rx++;
                             printf("    reading done\n");
                             return i;
                         }
