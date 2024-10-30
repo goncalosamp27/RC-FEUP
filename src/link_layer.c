@@ -12,6 +12,7 @@
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 #define BUF_SIZE 256
+#define MAX_DISCONNECT_RETRIES 4
 
 extern int BCC2_hit;
 extern int BCC2_fail;
@@ -377,6 +378,8 @@ int llread(unsigned char *packet){
 
     static unsigned char trama1;
 
+    int disconnectRetries = 0;
+
     unsigned char rcv;
     unsigned char control;
 
@@ -384,125 +387,145 @@ int llread(unsigned char *packet){
 
     printf("Reading start\n");
 
-    while(state != STOP_SM){
-        int check = readByteSerialPort(&rcv);
-        if(check == -1){
-            return -1; //deu erro
-        }
-        else if(check == 1){
-            switch(state){
-                case START_SM:
-                    if(rcv == FRAME) state = FLAG_OK;
-                    break;
+    while(nAttempts > 0){
 
-                case FLAG_OK:
-                    if(rcv == TRANSMITER_ADDRESS) state = A_OK;
-                    else if (rcv != FRAME) state = START_SM;
-                    break;
+        alarmTrigger = FALSE;
+        alarm(nTimeout);
+        
+        while(state != STOP_SM  && !alarmTrigger){
+            int check = readByteSerialPort(&rcv);
+            if(check == -1){
+                return -1; //deu erro
+            }
+            else if(check == 1){
+                switch(state){
+                    case START_SM:
+                        if(rcv == FRAME) state = FLAG_OK;
+                        break;
 
-                case A_OK:
-                    if (rcv == (trama1 << 6) || rcv == (trama1 << 6)){
-                        state = C_OK;
-                        control = rcv;
-                    }
-                    else if (rcv == FRAME) state = FLAG_OK;
-                    else if (rcv == 0x0B){
-                        //significa que terminou a conexão
-                        unsigned char byte[5];
+                    case FLAG_OK:
+                        if(rcv == TRANSMITER_ADDRESS) state = A_OK;
+                        else if (rcv != FRAME) state = START_SM;
+                        break;
 
-                        byte[0] = FRAME;
-                        byte[1] = RECIEVER_ADDRESS;
-                        byte[2] = 0x0B;
-                        byte[3] = (byte[1] ^ byte[2]);
-                        byte[4] = FRAME;
-                        writeBytesSerialPort(byte, sizeof(byte));
-                        return 0;
-                    }
-                    else state = START_SM;
-                    break;
-
-                case C_OK:
-                    if (rcv == (TRANSMITER_ADDRESS ^ control)) state = DATA;
-                    else if (rcv == FRAME) state = FLAG_OK;
-                    else state = START_SM;
-                    break;
-
-                case DATA: //aqui vamos ler a data passada no frame
-                    if (rcv == ESCAPE) state = DATA_ESCAPE;
-                    else if (rcv == FRAME){
-                        unsigned char bcc2 = packet[i - 1];
-                        i--;
-
-                        packet[i] = '\0';
-                        unsigned char bcc2_compare = packet[0];
-
-                        for(unsigned int j = 1; j < i; j++){
-                            bcc2_compare ^= packet[j];
+                    case A_OK:
+                        if (rcv == (trama1 << 6) || rcv == (trama1 << 6)){
+                            state = C_OK;
+                            control = rcv;
                         }
-
-                        if(bcc2 == bcc2_compare){
-                            state = STOP_SM;
+                        else if (rcv == FRAME) state = FLAG_OK;
+                        else if (rcv == 0x0B){
+                            //significa que terminou a conexão
                             unsigned char byte[5];
+
                             byte[0] = FRAME;
                             byte[1] = RECIEVER_ADDRESS;
-                            //0xAA ou 0xAB dependendo do control_C_RX
-                            if(trama1 == 0){
-                                byte[2] = C_RR0;
-                            }
-                            else if(trama1 == 1){
-                                byte[2] = C_RR1;
-                            }
+                            byte[2] = 0x0B;
                             byte[3] = (byte[1] ^ byte[2]);
                             byte[4] = FRAME;
                             writeBytesSerialPort(byte, sizeof(byte));
+                            return 0;
+                        }
+                        else state = START_SM;
+                        break;
 
-                            if(trama1 == 1){
-                                trama1 = 0;
+                    case C_OK:
+                        if (rcv == (TRANSMITER_ADDRESS ^ control)) state = DATA;
+                        else if (rcv == FRAME) state = FLAG_OK;
+                        else state = START_SM;
+                        break;
+
+                    case DATA: //aqui vamos ler a data passada no frame
+                        if (rcv == ESCAPE) state = DATA_ESCAPE;
+                        else if (rcv == FRAME){
+                            unsigned char bcc2 = packet[i - 1];
+                            i--;
+
+                            packet[i] = '\0';
+                            unsigned char bcc2_compare = packet[0];
+
+                            for(unsigned int j = 1; j < i; j++){
+                                bcc2_compare ^= packet[j];
                             }
-                            else if(trama1 == 0){
-                                trama1 = 1;
+
+                            if(bcc2 == bcc2_compare){
+                                state = STOP_SM;
+                                unsigned char byte[5];
+                                byte[0] = FRAME;
+                                byte[1] = RECIEVER_ADDRESS;
+                                //0xAA ou 0xAB dependendo do control_C_RX
+                                if(trama1 == 0){
+                                    byte[2] = C_RR0;
+                                }
+                                else if(trama1 == 1){
+                                    byte[2] = C_RR1;
+                                }
+                                byte[3] = (byte[1] ^ byte[2]);
+                                byte[4] = FRAME;
+                                writeBytesSerialPort(byte, sizeof(byte));
+
+                                if(trama1 == 1){
+                                    trama1 = 0;
+                                }
+                                else if(trama1 == 0){
+                                    trama1 = 1;
+                                }
+                                trama_switches_rx++;
+                                printf("    reading done\n");
+                                return i;
                             }
-                            trama_switches_rx++;
-                            printf("    reading done\n");
-                            return i;
+                            else{
+                                //temos informação repetida
+                                unsigned char byte[5];
+                                byte[0] = FRAME;
+                                byte[1] = RECIEVER_ADDRESS;
+                                //0x54 ou 0x55 dependendo do control_c_RX
+                                if(trama1 == 0){
+                                    byte[2] = C_REJ0;
+                                }
+                                else if(trama1 == 1){
+                                    byte[2] = C_REJ1;
+                                }
+                                byte[3] = (byte[1] ^ byte[2]);
+                                byte[4] = FRAME;
+                                writeBytesSerialPort(byte, sizeof(byte));
+                                return -1;
+                            };
                         }
                         else{
-                            //temos informação repetida
-                            unsigned char byte[5];
-                            byte[0] = FRAME;
-                            byte[1] = RECIEVER_ADDRESS;
-                            //0x54 ou 0x55 dependendo do control_c_RX
-                            if(trama1 == 0){
-                                byte[2] = C_REJ0;
-                            }
-                            else if(trama1 == 1){
-                                byte[2] = C_REJ1;
-                            }
-                            byte[3] = (byte[1] ^ byte[2]);
-                            byte[4] = FRAME;
-                            writeBytesSerialPort(byte, sizeof(byte));
-                            return -1;
-                        };
-                    }
-                    else{
-                        packet[i++] = rcv;
-                        totalDataBytesRead++;
-                    }
-                    break;
+                            packet[i++] = rcv;
+                            totalDataBytesRead++;
+                        }
+                        break;
 
-                case DATA_ESCAPE:
-                    state = DATA;
-                    packet[i++] = rcv ^ 0x20;
-                    totalDataBytesRead++;
-                    break;
-                    
-                default:
-                    break;
+                    case DATA_ESCAPE:
+                        state = DATA;
+                        packet[i++] = rcv ^ 0x20;
+                        totalDataBytesRead++;
+                        break;
+                        
+                    default:
+                        break;
+                }
             }
         }
+        nAttempts--;
+    }    
+
+    if (state == STOP_SM) {
+            printf("llread - success\n");
+            return i;
+        }
+
+    if (nAttempts == 0) {
+        printf("Timeout reached in llread. Alarm triggered.\n");
+        exit(-1);
     }
 
-    printf("llread - success\n");
+    if (disconnectRetries >= MAX_DISCONNECT_RETRIES) {
+        printf("Failed to reconnect after multiple attempts. Terminating read.\n");
+        return -1;
+    }
 
     return -1;
 }
